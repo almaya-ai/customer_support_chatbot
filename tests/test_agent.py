@@ -155,6 +155,58 @@ class AgentTest(unittest.TestCase):
         self.assertIn("אביזרים לבית מחזירים בסניף", result["quotes"][1]["text"])
         self.assertNotIn("[home-accessories]", result["quotes"][1]["text"])
 
+    def documents_for(self, client):
+        listing = FakeOpenRouter(call("list_documents"), call("finish", answer="", source_rows=[]))
+        self.ask(client, "מה יש לי?", listing)
+        return documents_in(listing.tool_results()[0])
+
+    def test_return_rule_also_cites_the_receipt_that_was_read(self):
+        for client, receipt, words, tag in ((self.noa, "order-noa.txt", "מחזירים בסניף", "[home-accessories]"),
+                                            (self.dan, "order-dan.pdf", "איסוף מהבית", "[furniture]")):
+            with self.subTest(receipt=receipt):
+                ids = self.documents_for(client)
+                reads = [call("read_document", document_id=ids[receipt]),
+                         call("read_document", document_id=ids["service-guide.txt"])]
+                probe = FakeOpenRouter(reads, call("finish", answer="", source_rows=[]))
+                self.ask(client, "איך מחזירים?", probe)
+                rule = self.row_id(probe.tool_results()[1], words)
+                model = FakeOpenRouter(reads, call("finish", answer="כך מחזירים.", source_rows=[rule]))
+                result = self.ask(client, "איך מחזירים?", model).get_json()
+                self.assertEqual(result["sources"], [receipt, "service-guide.txt"])
+                self.assertEqual(set(result["quotes"][0]), {"source", "text"})
+                self.assertIn(tag, result["quotes"][0]["text"])
+
+    def test_fallback_shows_the_cited_rule_and_not_the_added_receipt(self):
+        ids = self.documents_for(self.dan)
+        reads = [call("read_document", document_id=ids["order-dan.pdf"]),
+                 call("read_document", document_id=ids["service-guide.txt"])]
+        probe = FakeOpenRouter(reads, call("finish", answer="", source_rows=[]))
+        self.ask(self.dan, "איך מחזירים?", probe)
+        rule = self.row_id(probe.tool_results()[1], "איסוף מהבית")
+        model = FakeOpenRouter(reads, call("finish", answer="יש לך 99 יום.", source_rows=[rule]))
+        result = self.ask(self.dan, "איך מחזירים?", model).get_json()
+        self.assertEqual(result["answer"], "להחזרת ריהוט מתאמים איסוף מהבית עם שירות הלקוחות.")
+        self.assertEqual(result["sources"], ["order-dan.pdf", "service-guide.txt"])
+
+    def test_return_rule_without_a_read_receipt_cites_only_the_guide(self):
+        document = self.documents_for(self.dan)["service-guide.txt"]
+        probe = FakeOpenRouter(call("read_document", document_id=document), call("finish", answer="", source_rows=[]))
+        self.ask(self.dan, "איך מחזירים?", probe)
+        rule = self.row_id(probe.tool_results()[0], "איסוף מהבית")
+        model = FakeOpenRouter(call("read_document", document_id=document),
+                               call("finish", answer="כך מחזירים.", source_rows=[rule]))
+        self.assertEqual(self.ask(self.dan, "איך מחזירים?", model).get_json()["sources"], ["service-guide.txt"])
+
+    def test_receipt_of_another_category_is_not_added(self):
+        ids = self.documents_for(self.noa)
+        reads = [call("read_document", document_id=ids["order-noa.txt"]),
+                 call("read_document", document_id=ids["service-guide.txt"])]
+        probe = FakeOpenRouter(reads, call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "ריהוט?", probe)
+        furniture = self.row_id(probe.tool_results()[1], "איסוף מהבית")
+        model = FakeOpenRouter(reads, call("finish", answer="ריהוט מחזירים כך.", source_rows=[furniture]))
+        self.assertEqual(self.ask(self.noa, "ריהוט?", model).get_json()["sources"], ["service-guide.txt"])
+
     def test_tools_expose_only_this_account_and_shared_documents(self):
         model = FakeOpenRouter(call("list_documents"), call("finish", answer="", source_rows=[]))
         self.ask(self.noa, "מה יש לי?", model)

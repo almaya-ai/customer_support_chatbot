@@ -222,6 +222,8 @@ class AgentTools:
         permitted = [doc for scope in (user, "shared") for doc in store.documents(scope)]
         self.documents = {f"d{number}": doc for number, doc in enumerate(permitted, 1)}
         self.read_rows = {}
+        self.rule_categories = {}
+        self.receipt_categories = {}
         self.checked = []
 
     def note_checked(self, source):
@@ -253,7 +255,12 @@ class AgentTools:
             row_id = f"{document_id}:{number}"
             # The agent matches on the category tag. The customer sees only the rule.
             rule = RETURN_POLICY.match(line)
+            category = RECEIPT_CATEGORY.match(line)
             self.read_rows[row_id] = {"source": doc["name"], "text": (rule[2] if rule else line)[:650]}
+            if rule:
+                self.rule_categories[row_id] = rule[1].casefold()
+            if category:
+                self.receipt_categories[row_id] = category[1].casefold()
             rows.append({"id": row_id, "text": line[:650]})
         self.note_checked(doc["name"])
         return {"name": doc["name"], "rows": rows}
@@ -271,6 +278,13 @@ class AgentTools:
             return {"error": "The tool arguments must be an object."}
         return handlers[name](arguments)
 
+    def with_matching_receipts(self, row_ids):
+        """A cited return rule rests on the receipt that gave its category, so cite that receipt too."""
+        categories = {self.rule_categories[row_id] for row_id in row_ids if row_id in self.rule_categories}
+        receipts = [row_id for row_id, category in self.receipt_categories.items()
+                    if category in categories and row_id not in row_ids]
+        return [*receipts, *row_ids]
+
     def finish(self, raw_arguments, instructions):
         arguments = json.loads(raw_arguments or "{}") if isinstance(raw_arguments, str) else raw_arguments
         answer = (arguments.get("answer") or "").strip()
@@ -278,11 +292,11 @@ class AgentTools:
         if len(row_ids) > MAX_SOURCE_ROWS:
             raise ValueError("Too many source rows")
         # Only rows this run actually read can support an answer.
-        quotes = [self.read_rows[row_id] for row_id in row_ids]
+        quotes = [self.read_rows[row_id] for row_id in self.with_matching_receipts(row_ids)]
         if not answer or not quotes or repeats_instructions(answer, instructions):
             return {"answer": "", "quotes": [], "sources": [], "checked": self.checked}
         if not supported_by(answer, quotes):
-            answer = "\n".join(quote["text"] for quote in quotes[:2])
+            answer = "\n".join(self.read_rows[row_id]["text"] for row_id in row_ids[:2])
         sources = list(dict.fromkeys(quote["source"] for quote in quotes))
         return {"answer": answer, "quotes": quotes, "sources": sources, "checked": self.checked}
 
