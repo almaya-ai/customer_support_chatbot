@@ -147,8 +147,13 @@ def create_app(config=None, store=None):
                     return jsonify(error="מפתח OpenRouter נדחה או שאין בו יתרה. בדקו אותו בהגדרות."), 400
                 app.logger.warning("OpenRouter could not select evidence")
                 return jsonify(error="החיבור למודל לא זמין כרגע. נסו שוב."), 502
+        sources = {}
+        for row in choices[:2]:
+            if "receipt_source" in row:
+                sources[row["receipt_source"]] = None
+            sources[row["source"]] = None
         return jsonify(answer="\n".join(row["text"] for row in choices[:2]) or MISSING,
-                       sources=list(dict.fromkeys(row["source"] for row in choices[:2])), mode=mode)
+                       sources=list(sources), mode=mode)
 
     @app.errorhandler(400)
     @app.errorhandler(401)

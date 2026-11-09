@@ -9,9 +9,14 @@ from urllib.request import Request, urlopen
 
 MISSING = "המידע הזה לא זמין במקורות שלך."
 ORDER_TOPIC = re.compile(r"מוכנ|מתי|לאיסוף|לאסוף|קוד\s+איסוף|סניף|סטטוס|מצב|הזמנה שלי|ready|pickup|status", re.I)
+RETURN_REFERENCE = re.compile(r"קובץ|בקבלה|באישור|שלי|שקניתי|\bmy\b|receipt|file", re.I)
+RETURN_METHOD = re.compile(r"איך|כיצד|איפה|לאן|באיזה אופן|בסניף|מהבית|\bwhere\b|\bhow\b(?!\s+(?:many|long))", re.I)
+RECEIPT_ID = re.compile(r"^(?:מספר הזמנה|Order number): ([A-Z]{2,8}-\d{2,})$", re.M | re.I)
+RECEIPT_CATEGORY = re.compile(r"^(?:קטגוריה|Category): [^\[]+ \[([a-z][a-z0-9-]*)\]$", re.M | re.I)
+RETURN_POLICY = re.compile(r"^החזרת [^\[]+ \[([a-z][a-z0-9-]*)\]: (.+)$", re.M)
 ORDER_ID = re.compile(r"\b[A-Z]{2,8}-\d{2,}\b", re.I)
 ALIASES = {
-    "return": {"להחזיר", "החזרה", "החזרות", "return", "returns"},
+    "return": {"להחזיר", "מחזירים", "החזרת", "החזרה", "החזרות", "return", "returns"},
     "paid": {"שילמתי", "שולם", "מחיר", "סכום", "paid", "price", "total"},
     "color": {"צבע", "color", "colour"},
     "warranty": {"אחריות", "warranty"},
@@ -48,6 +53,31 @@ def terms(text):
     return {NORMALIZE.get(word, word) for word in words}
 
 
+def return_evidence(user, order, store):
+    """Match the category in a private receipt to a shared return rule."""
+    if not order:
+        return []
+    receipts = {}
+    for doc in store.documents(user):
+        if order["id"] not in {value.upper() for value in RECEIPT_ID.findall(doc["text"])}:
+            continue
+        for category in RECEIPT_CATEGORY.findall(doc["text"]):
+            receipts.setdefault(category.casefold(), doc["name"])
+    if len(receipts) != 1:
+        return []
+    category, receipt = next(iter(receipts.items()))
+
+    policies = {}
+    for doc in store.documents("shared"):
+        for code, rule in RETURN_POLICY.findall(doc["text"]):
+            if code == category:
+                policies.setdefault(rule, doc["name"])
+    if len(policies) != 1:
+        return []
+    rule, policy = next(iter(policies.items()))
+    return [{"source": policy, "receipt_source": receipt, "text": rule}]
+
+
 def evidence(user, question, store):
     order = store.order(user)
     identifiers = {item.upper() for item in ORDER_ID.findall(question)}
@@ -56,6 +86,9 @@ def evidence(user, question, store):
     if names & foreign or (identifiers and identifiers != {order["id"] if order else None}):
         return []
     concepts = terms(question)
+    if ("return" in concepts and RETURN_METHOD.search(question)
+            and (identifiers or RETURN_REFERENCE.search(question))):
+        return return_evidence(user, order, store)
     order_query = ORDER_TOPIC.search(question) and not concepts.intersection(ALIASES)
     if order_query and order:
         return [{"source": f'מערכת החנות | {order["id"]}', "text": order["text"]}]
@@ -64,6 +97,8 @@ def evidence(user, question, store):
     for scope in (user, "shared"):
         for doc in store.documents(scope):
             for line in doc["text"].splitlines():
+                if "return" in focused and RETURN_POLICY.match(line):
+                    continue
                 rank = len(focused & terms(line))
                 if rank:
                     hits.append((rank, {"source": doc["name"], "text": line[:650]}))

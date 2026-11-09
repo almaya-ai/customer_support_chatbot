@@ -71,6 +71,34 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.ask("noa", "כמה דן שילם בהזמנה KB-2071 והאם היא מוכנה?")["sources"], [])
         self.assertEqual(self.ask("noa", "מה משך האחריות?")["sources"], [])
 
+    def test_returns_join_private_receipt_with_shared_policy(self):
+        self.user("noa")
+        self.user("dan")
+        self.user("service")
+        question = "איך מחזירים את מה שקניתי בהזמנה שבקובץ?"
+        self.assertEqual(self.upload("noa", "order-noa.txt").status_code, 303)
+        self.assertEqual(self.ask("noa", question)["sources"], [])
+        self.assertEqual(self.upload("service", "service-guide.txt").status_code, 303)
+        self.assertEqual(self.ask("dan", question)["sources"], [])
+        self.assertEqual(self.upload("dan", "order-dan.pdf").status_code, 303)
+
+        self.app.config.update(OPENROUTER_MODEL="stub")
+        with patch("main.select_with_openrouter", side_effect=lambda _, rows, *_args: rows[:1]) as model:
+            for user, filename, answer, other_id, other_file in (
+                ("noa", "order-noa.txt", "מחזירים בסניף", "KB-2071", "order-dan.pdf"),
+                ("dan", "order-dan.pdf", "מתאמים איסוף מהבית", "KB-1042", "order-noa.txt"),
+            ):
+                with self.subTest(user=user):
+                    result = self.ask(user, question, key="stub")
+                    self.assertEqual(result["sources"], [filename, "service-guide.txt"])
+                    self.assertIn(answer, result["answer"])
+                    self.assertNotIn(other_file, self.clients[user].get("/").get_data(as_text=True))
+                    self.assertNotIn(other_file, str(model.call_args))
+                    model.reset_mock()
+                    result = self.ask(user, f"איך מחזירים את הפריט בהזמנה {other_id}?", key="stub")
+                    self.assertEqual(result["sources"], [])
+                    model.assert_not_called()
+
     def test_invalid_file_and_csrf(self):
         noa = self.user("noa")
         self.assertEqual(self.upload("noa", "broken.pdf", b"fake").status_code, 400)
