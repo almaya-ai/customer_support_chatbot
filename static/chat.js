@@ -42,49 +42,140 @@ function element(tag, className, text) {
 
 const form = document.querySelector("#ask");
 if (form) {
+  const STORAGE_KEY = `chat:${document.body.dataset.user}`;
+  const MAX_STORED = 30;
+  const HISTORY_EXCHANGES = 6;
   const welcome = document.querySelector("#welcome");
   const answer = document.querySelector("#answer");
+  const scroller = document.querySelector(".conversation");
+  const newChat = document.querySelector("#new-chat");
   const question = form.elements.question;
   const send = document.querySelector("#send");
+  let exchanges = loadExchanges();
+
+  function loadExchanges() {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "[]");
+      return Array.isArray(stored) ? stored : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveExchanges() {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(exchanges.slice(-MAX_STORED)));
+    } catch {
+      // Without storage the conversation still works until the page reloads.
+    }
+  }
+
+  function clearStoredChats() {
+    try {
+      for (const name of Object.keys(sessionStorage)) {
+        if (name.startsWith("chat:")) sessionStorage.removeItem(name);
+      }
+    } catch {
+      // Nothing was stored.
+    }
+  }
+
+  function showState() {
+    const started = exchanges.length > 0;
+    answer.hidden = !started;
+    welcome.hidden = started;
+    newChat.hidden = !started;
+  }
+
+  function scrollToEnd() {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  function fillReply(reply, result) {
+    const text = element("p", "", result.answer || result.error);
+    reply.replaceChildren(text);
+    reply.classList.remove("waiting");
+    if (result.sources?.length) {
+      const sources = element("div", "sources", "מקורות");
+      for (const source of result.sources) {
+        const chip = element("bdi", "source", source);
+        chip.dir = "auto";
+        sources.append(chip);
+      }
+      reply.append(sources);
+    }
+    if (result.quotes?.length) {
+      const quotes = element("details", "quotes");
+      quotes.append(element("summary", "", "הצגת הטקסט המקורי"));
+      for (const quote of result.quotes) {
+        const row = element("blockquote", "", quote.text);
+        row.dir = "auto";
+        quotes.append(row);
+      }
+      reply.append(quotes);
+    }
+    if (result.mode === "local") reply.append(element("small", "", "תצוגת מקורות ללא מודל"));
+    if (result.checked?.length) {
+      reply.append(element("small", "checked", "הסוכן בדק: " + result.checked.join(", ")));
+    }
+  }
+
+  function addExchange(text) {
+    const reply = element("div", "reply");
+    answer.append(element("p", "bubble", text), reply);
+    return reply;
+  }
+
+  function historyForModel() {
+    return exchanges.filter((item) => item.result?.answer).slice(-HISTORY_EXCHANGES).flatMap((item) => [
+      {role: "user", text: item.question},
+      {role: "assistant", text: item.result.answer},
+    ]);
+  }
+
+  for (const item of exchanges) fillReply(addExchange(item.question), item.result);
+  showState();
+  scrollToEnd();
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const text = element("p", "", "מחפש תשובה…");
-    const reply = element("div", "reply waiting");
-    reply.append(text);
-    // The service keeps no history, so each question replaces the previous one.
-    answer.replaceChildren(element("p", "bubble", question.value), reply);
-    answer.hidden = false;
-    welcome.hidden = true;
+    const asked = question.value;
     const body = new FormData(form);
     body.set("openrouter_key", keyField.value.trim());
+    body.set("history", JSON.stringify(historyForModel()));
+    const reply = addExchange(asked);
+    reply.classList.add("waiting");
+    reply.append(element("p", "", "מחפש תשובה…"));
+    answer.hidden = false;
+    welcome.hidden = true;
+    newChat.hidden = false;
+    scrollToEnd();
     send.disabled = true;
     question.value = "";
+    let result;
     try {
       const response = await fetch(form.action, {method: "POST", body});
-      const result = await response.json();
-      text.textContent = result.answer || result.error;
-      if (result.sources?.length) {
-        const sources = element("div", "sources", "מקורות");
-        for (const source of result.sources) {
-          const chip = element("bdi", "source", source);
-          chip.dir = "auto";
-          sources.append(chip);
-        }
-        reply.append(sources);
-      }
-      if (result.mode === "local") reply.append(element("small", "", "תצוגת מקורות ללא מודל"));
-      if (result.checked?.length) {
-        reply.append(element("small", "checked", "הסוכן בדק: " + result.checked.join(", ")));
-      }
+      result = await response.json();
     } catch {
-      text.textContent = "הבקשה נכשלה. רעננו את הדף ונסו שוב.";
-    } finally {
-      reply.classList.remove("waiting");
-      send.disabled = false;
-      question.focus();
+      result = {error: "הבקשה נכשלה. רעננו את הדף ונסו שוב."};
     }
+    fillReply(reply, result);
+    exchanges.push({question: asked, result});
+    saveExchanges();
+    send.disabled = false;
+    question.focus();
+    scrollToEnd();
   });
+
+  newChat.addEventListener("click", () => {
+    exchanges = [];
+    saveExchanges();
+    answer.replaceChildren();
+    showState();
+    question.focus();
+  });
+
+  document.querySelector(".tools form").addEventListener("submit", clearStoredChats);
 
   for (const suggestion of document.querySelectorAll(".suggestion")) {
     suggestion.addEventListener("click", () => {

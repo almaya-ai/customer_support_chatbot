@@ -161,15 +161,16 @@ def create_app(config=None, store=None):
             return jsonify(answer=MISSING, sources=[], checked=[], mode="search")
         if key and model:
             try:
-                result = run_agent(user, question, store, key, model, store.instructions(DEFAULT_INSTRUCTIONS))
+                result = run_agent(user, question, store, key, model, store.instructions(DEFAULT_INSTRUCTIONS),
+                                   request.form.get("history"))
             except (URLError, TimeoutError, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
                 if isinstance(exc, HTTPError) and exc.code in (401, 402):
                     app.logger.warning("OpenRouter rejected the visitor key: %s", exc.code)
                     return jsonify(error="מפתח OpenRouter נדחה או שאין בו יתרה. בדקו אותו בהגדרות."), 400
                 app.logger.warning("The agent could not finish: %s", type(exc).__name__)
                 return jsonify(error="החיבור למודל לא זמין כרגע. נסו שוב."), 502
-            return jsonify(answer="\n".join(row["text"] for row in result["rows"]) or MISSING,
-                           sources=result["sources"], checked=result["checked"], mode="openrouter")
+            return jsonify(answer=result["answer"] or MISSING, sources=result["sources"], quotes=result["quotes"],
+                           checked=result["checked"], mode="openrouter")
         choices = evidence(user, question, store)
         sources = {}
         for row in choices[:2]:

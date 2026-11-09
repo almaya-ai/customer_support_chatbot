@@ -10,7 +10,7 @@
   <script defer src="{{ url_for('static', filename='chat.js') }}"></script>
 </head>
 {% if chat %}
-<body class="chat">
+<body class="chat" data-user="{{ user }}">
   <div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
   <div id="drop-zone" class="drop-zone" hidden><div><strong>שחררו את הקובץ כאן</strong><span>TXT או PDF עם טקסט, עד 2 MB</span></div></div>
 
@@ -18,6 +18,7 @@
   <header class="topbar">
     <span class="brand">קו לבית</span>
     <nav class="tools" aria-label="כלים">
+      <button type="button" id="new-chat" class="ghost" hidden>שיחה חדשה</button>
       <button type="button" class="ghost" popovertarget="documents-panel">מסמכים{% if documents %} <span class="count">{{ documents|length }}</span>{% endif %}</button>
       <button type="button" class="ghost" id="key-button" popovertarget="key-panel"><span class="dot" aria-hidden="true"></span>מפתח</button>
       <span class="who">{{ users[user].split(' | ')[0] }}</span>
@@ -28,7 +29,6 @@
   <main class="conversation">
     <div class="column">
       <div id="welcome" class="welcome">
-        {% if uploaded %}<p class="toast" role="status">הקובץ נוסף.</p>{% endif %}
         <h1>שלום {{ users[user].split(' | ')[0] }}, במה אפשר לעזור?</h1>
         {% if user != 'service' %}<p>אפשר לשאול על מצב ההזמנה, על פרטים באישור שהעליתם או על מדיניות החנות.</p>
         {% else %}<p>אפשר לשאול על מדיניות החנות ועל מדריכים משותפים.</p>{% endif %}
@@ -49,6 +49,7 @@
 
   <footer class="composer-area">
     <div class="column">
+      {% if uploaded %}<p class="toast" role="status">הקובץ נוסף.</p>{% endif %}
       {% if not local %}
       <div id="key-banner" class="key-banner" hidden>
         <span>כדי לשאול צריך מפתח OpenRouter.</span>
@@ -74,7 +75,7 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
         </button>
       </form>
-      <p class="hint">כל שאלה נענית בנפרד, בלי זיכרון של שאלות קודמות.</p>
+      <p class="hint">השיחה נשמרת בלשונית הזו בלבד, ונמחקת כשיוצאים מהחשבון.</p>
     </div>
   </footer>
   </div>

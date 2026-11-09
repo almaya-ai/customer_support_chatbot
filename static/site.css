@@ -95,18 +95,22 @@ body.chat { height: 100dvh; padding: clamp(8px, 2.5vw, 28px); }
 .welcome { text-align: center; }
 .welcome h1 { font-size: clamp(25px, 4.5vw, 32px); font-weight: 650; letter-spacing: -.01em; margin-bottom: 10px; }
 .welcome p { color: var(--muted); }
-.toast { display: inline-block; margin-bottom: 18px; padding: 3px 12px; border-radius: 999px; background: var(--bg); color: var(--ink) !important; font-size: 14px; }
+.toast { width: fit-content; margin: 0 auto 8px; padding: 3px 12px; border-radius: 999px; background: var(--bubble); color: var(--on-bubble); font-size: 14px; }
 .suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
 .suggestion { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 450; font-size: 15px; }
 .suggestion:hover { background: var(--bg); }
 
-.exchange { display: flex; flex-direction: column; gap: 18px; overflow-wrap: anywhere; }
+.exchange { display: flex; flex-direction: column; gap: 16px; overflow-wrap: anywhere; }
+.reply { margin-bottom: 8px; }
 .bubble { align-self: flex-end; max-width: 82%; margin: 0; padding: 9px 15px; border-radius: 18px 18px 18px 5px; background: var(--bubble); color: var(--on-bubble); white-space: pre-wrap; }
 .reply p { margin: 0; font-size: 17px; line-height: 1.7; white-space: pre-wrap; }
 .reply.waiting p { color: var(--muted); }
 .sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; color: var(--muted); font-size: 13px; }
 .source { padding: 1px 9px; border-radius: 999px; background: var(--bg); color: var(--ink); }
 .reply small { margin-top: 8px; }
+.quotes { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.quotes summary { cursor: pointer; }
+.quotes blockquote { margin: 6px 0 0; padding: 6px 10px; background: var(--bg); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .composer-area { padding-block: 4px 10px; }
 .composer { display: flex; align-items: center; gap: 4px; padding: 5px; background: var(--bg); border: 1px solid var(--line); border-radius: 26px; }

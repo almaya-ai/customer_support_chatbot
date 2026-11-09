@@ -108,7 +108,7 @@ class AppTest(unittest.TestCase):
 
 
 def finds_the_order():
-    return FakeOpenRouter(call("get_my_order"), call("finish", answer_rows=["order"]))
+    return FakeOpenRouter(call("get_my_order"), call("finish", answer="קוד האיסוף שלך הוא 4826.", source_rows=["order"]))
 
 
 class AccessTest(unittest.TestCase):
@@ -327,6 +327,12 @@ class AdminInstructionsTest(unittest.TestCase):
     def test_local_chat_needs_no_key_prompt(self):
         client, _ = self.login("noa")
         self.assertNotIn('id="key-banner"', client.get("/").get_data(as_text=True))
+
+    def test_chat_page_names_the_account_for_its_stored_conversation(self):
+        client, _ = self.login("noa")
+        page = client.get("/").get_data(as_text=True)
+        self.assertIn('data-user="noa"', page)
+        self.assertIn('id="new-chat"', page)
 
     def test_drop_zone_exists_only_where_uploading_is_possible(self):
         self.assertNotIn('id="drop-zone"', self.app.test_client().get("/").get_data(as_text=True))
