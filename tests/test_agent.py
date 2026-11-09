@@ -7,8 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from answers import MAX_AGENT_STEPS, MAX_HISTORY_CHARS, MAX_HISTORY_MESSAGES
+from answers import MAX_AGENT_STEPS, MAX_CONTEXT_CHARS, MAX_HISTORY_CHARS, MAX_HISTORY_MESSAGES
 from main import create_app
+from store import LocalStore
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -30,7 +31,7 @@ class FakeOpenRouter:
     def __call__(self, request, timeout=None):
         self.requests.append(json.loads(request.data))
         self.headers.append(request.get_header("Authorization"))
-        step = self.steps.pop(0) if self.steps else call("list_documents")
+        step = self.steps.pop(0) if self.steps else call("get_documents")
         if isinstance(step, str):
             message = {"role": "assistant", "content": step}
         else:
@@ -59,6 +60,7 @@ class AgentTest(unittest.TestCase):
     def setUp(self):
         data = tempfile.TemporaryDirectory()
         self.addCleanup(data.cleanup)
+        self.data = data.name
         self.app = create_app({"TESTING": True, "DATA_DIR": data.name, "OPENROUTER_MODEL": "stub-model"})
         self.noa = self.login("noa")
         self.dan = self.login("dan")
@@ -97,7 +99,7 @@ class AgentTest(unittest.TestCase):
 
     def read_ids(self, client, question, name):
         """Run the first two steps for real to learn the ids this session assigns."""
-        model = FakeOpenRouter(call("list_documents"), call("finish", answer="", source_rows=[]))
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
         self.ask(client, question, model)
         return documents_in(model.tool_results()[0])[name]
 
@@ -108,12 +110,12 @@ class AgentTest(unittest.TestCase):
         self.ask(self.noa, question, probe)
         row = self.row_id(probe.tool_results()[0], "21 יום")
 
-        model = FakeOpenRouter(call("list_documents"), call("read_document", document_id=document),
+        model = FakeOpenRouter(call("get_documents"), call("read_document", document_id=document),
                                call("finish", answer="יש לך 21 יום להחזיר את המוצר.", source_rows=[row]))
         result = self.ask(self.noa, question, model).get_json()
         self.assertEqual(result["answer"], "יש לך 21 יום להחזיר את המוצר.")
-        self.assertEqual(result["quotes"], [
-            {"source": "service-guide.txt", "text": "אפשר לבקש החזרה בתוך 21 יום ממסירת ההזמנה."},
+        self.assertEqual([(q["source"], q["text"]) for q in result["quotes"]], [
+            ("service-guide.txt", "אפשר לבקש החזרה בתוך 21 יום ממסירת ההזמנה."),
         ])
         self.assertEqual(result["sources"], ["service-guide.txt"])
         self.assertEqual(result["mode"], "openrouter")
@@ -123,7 +125,7 @@ class AgentTest(unittest.TestCase):
         model = FakeOpenRouter(call("finish", answer="", source_rows=[]))
         self.ask(self.noa, "שלום", model)
         names = {tool["function"]["name"] for tool in model.requests[0]["tools"]}
-        self.assertEqual(names, {"get_my_order", "list_documents", "read_document", "finish"})
+        self.assertEqual(names, {"get_my_order", "get_documents", "read_document", "finish"})
         self.assertEqual(model.headers[0], "Bearer visitor-key")
 
     def test_order_comes_only_from_the_signed_in_customer(self):
@@ -136,7 +138,7 @@ class AgentTest(unittest.TestCase):
 
     def test_answer_cites_each_source_and_quotes_show_clean_text(self):
         question = "איך מחזירים את מה שקניתי בהזמנה שבקובץ?"
-        listing = FakeOpenRouter(call("list_documents"), call("finish", answer="", source_rows=[]))
+        listing = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
         self.ask(self.noa, question, listing)
         ids = documents_in(listing.tool_results()[0])
         reads = [call("read_document", document_id=ids["order-noa.txt"]),
@@ -156,7 +158,7 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn("[home-accessories]", result["quotes"][1]["text"])
 
     def documents_for(self, client):
-        listing = FakeOpenRouter(call("list_documents"), call("finish", answer="", source_rows=[]))
+        listing = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
         self.ask(client, "מה יש לי?", listing)
         return documents_in(listing.tool_results()[0])
 
@@ -173,7 +175,7 @@ class AgentTest(unittest.TestCase):
                 model = FakeOpenRouter(reads, call("finish", answer="כך מחזירים.", source_rows=[rule]))
                 result = self.ask(client, "איך מחזירים?", model).get_json()
                 self.assertEqual(result["sources"], [receipt, "service-guide.txt"])
-                self.assertEqual(set(result["quotes"][0]), {"source", "text"})
+                self.assertEqual(result["quotes"][0]["source"], receipt)
                 self.assertIn(tag, result["quotes"][0]["text"])
 
     def test_fallback_shows_the_cited_rule_and_not_the_added_receipt(self):
@@ -208,7 +210,7 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(self.ask(self.noa, "ריהוט?", model).get_json()["sources"], ["service-guide.txt"])
 
     def test_tools_expose_only_this_account_and_shared_documents(self):
-        model = FakeOpenRouter(call("list_documents"), call("finish", answer="", source_rows=[]))
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
         self.ask(self.noa, "מה יש לי?", model)
         self.assertEqual(set(documents_in(model.tool_results()[0])), {"order-noa.txt", "service-guide.txt"})
         self.assertNotIn("order-dan.pdf", model.everything_sent())
@@ -301,7 +303,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("error", json.loads(model.tool_results()[0]))
 
     def test_tool_results_are_linked_to_their_calls(self):
-        model = FakeOpenRouter(call("list_documents"), call("finish", answer="", source_rows=[]))
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
         self.ask(self.noa, "שלום", model)
         messages = model.requests[-1]["messages"]
         assistant = next(m for m in messages if m["role"] == "assistant")
@@ -365,6 +367,104 @@ class AgentTest(unittest.TestCase):
         result = self.ask(self.noa, "מה קוד האיסוף של דן?", model, history=history).get_json()
         self.assertEqual(result["answer"], MISSING)
         self.assertEqual(model.requests, [])
+
+    def plant_guide(self, name, text, created):
+        LocalStore(self.data).add({"id": name, "scope": "shared", "name": name, "text": text, "created": created}, b"")
+
+    def test_documents_are_listed_newest_first_with_their_dates(self):
+        self.plant_guide("old.txt", "ישן", 1000000000.0)
+        self.plant_guide("future.txt", "חדש", 4000000000.0)
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "מה יש?", model)
+        documents = json.loads(model.tool_results()[0])["documents"]
+        self.assertEqual(documents[0]["name"], "future.txt")
+        self.assertEqual(documents[-1]["name"], "old.txt")
+        self.assertEqual(documents[-1]["uploaded_at"], "2001-09-09T01:46:40+00:00")
+        moments = [doc["uploaded_at"] for doc in documents]
+        self.assertEqual(moments, sorted(moments, reverse=True))
+
+    def test_personal_and_shared_documents_are_ordered_together(self):
+        self.plant_guide("old-shared.txt", "ישן", 1000000000.0)
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "מה יש?", model)
+        names = [doc["name"] for doc in json.loads(model.tool_results()[0])["documents"]]
+        self.assertEqual(names[-1], "old-shared.txt")
+        self.assertIn("order-noa.txt", names[:-1])
+
+    def test_reading_a_document_returns_its_date(self):
+        self.plant_guide("dated.txt", "החזרה תוך 14 יום", 1000000000.0)
+        document = self.documents_for(self.noa)["dated.txt"]
+        model = FakeOpenRouter(call("read_document", document_id=document), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "כמה זמן?", model)
+        self.assertEqual(json.loads(model.tool_results()[0])["uploaded_at"], "2001-09-09T01:46:40+00:00")
+
+    def test_quotes_show_the_date_of_their_document(self):
+        self.plant_guide("dated.txt", "החזרה תוך 14 יום", 1000000000.0)
+        document = self.documents_for(self.noa)["dated.txt"]
+        probe = FakeOpenRouter(call("read_document", document_id=document), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "כמה זמן?", probe)
+        row = self.row_id(probe.tool_results()[0], "14 יום")
+        model = FakeOpenRouter(call("read_document", document_id=document),
+                               call("finish", answer="יש לכם 14 יום.", source_rows=[row]))
+        quote = self.ask(self.noa, "כמה זמן?", model).get_json()["quotes"][0]
+        self.assertEqual(quote["date"], "09.09.2001")
+
+    def test_one_call_returns_every_permitted_document_with_its_rows(self):
+        self.plant_guide("old-policy-2019.txt", "אפשר להחזיר בתוך 10 ימים", 4000000000.0)
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "תוך כמה זמן?", model)
+        documents = json.loads(model.tool_results()[0])["documents"]
+        self.assertEqual({doc["name"] for doc in documents},
+                         {"old-policy-2019.txt", "order-noa.txt", "service-guide.txt"})
+        self.assertEqual(documents[0]["name"], "old-policy-2019.txt")
+        self.assertEqual(documents[0]["rows"][0]["text"], "אפשר להחזיר בתוך 10 ימים")
+
+    def test_rows_from_the_package_can_be_cited_without_a_second_read(self):
+        self.plant_guide("new.txt", "אפשר להחזיר בתוך 10 ימים", 4000000000.0)
+        probe = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "תוך כמה זמן?", probe)
+        row = json.loads(probe.tool_results()[0])["documents"][0]["rows"][0]["id"]
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="יש לכם 10 ימים.", source_rows=[row]))
+        result = self.ask(self.noa, "תוך כמה זמן?", model).get_json()
+        self.assertEqual(result["answer"], "יש לכם 10 ימים.")
+        self.assertEqual(result["sources"], ["new.txt"])
+
+    def test_package_keeps_the_newest_documents_when_it_is_too_large(self):
+        bulk = "\n".join(f"שורה מספר {number}" for number in range(3000))
+        self.plant_guide("older-bulk.txt", bulk, 3000000000.0)
+        self.plant_guide("older-bulk2.txt", bulk, 2900000000.0)
+        self.plant_guide("older-bulk3.txt", bulk, 2800000000.0)
+        self.plant_guide("newest.txt", "החזרה תוך 10 ימים", 4000000000.0)
+        model = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "תוך כמה זמן?", model)
+        result = json.loads(model.tool_results()[0])
+        by_name = {doc["name"]: doc for doc in result["documents"]}
+        self.assertIn("rows", by_name["newest.txt"])
+        self.assertLessEqual(len(model.tool_results()[0]), MAX_CONTEXT_CHARS * 2)
+        omitted = [doc for doc in result["documents"] if doc.get("omitted")]
+        self.assertTrue(omitted)
+        self.assertNotIn("rows", omitted[0])
+        self.assertIn("uploaded_at", omitted[0])
+
+    def test_omitted_document_can_still_be_read_and_cited(self):
+        bulk = "\n".join(f"שורה מספר {number}" for number in range(3000))
+        for number in range(4):
+            self.plant_guide(f"bulk{number}.txt", bulk, 3000000000.0 - number)
+        probe = FakeOpenRouter(call("get_documents"), call("finish", answer="", source_rows=[]))
+        self.ask(self.noa, "תוך כמה זמן?", probe)
+        omitted = next(doc for doc in json.loads(probe.tool_results()[0])["documents"] if doc.get("omitted"))
+        row = f'{omitted["document_id"]}:0'
+        unread = FakeOpenRouter(call("get_documents"), call("finish", answer="תשובה", source_rows=[row]))
+        self.assertEqual(self.ask(self.noa, "תוך כמה זמן?", unread).status_code, 502)
+        read = FakeOpenRouter(call("get_documents"), call("read_document", document_id=omitted["document_id"]),
+                              call("finish", answer="תשובה", source_rows=[row]))
+        self.assertEqual(self.ask(self.noa, "תוך כמה זמן?", read).status_code, 200)
+
+    def test_a_deleted_guide_is_no_longer_available_to_the_agent(self):
+        store = LocalStore(self.data)
+        self.plant_guide("gone.txt", "ישן", 1000000000.0)
+        self.assertTrue(store.delete_document("shared", "gone.txt"))
+        self.assertNotIn("gone.txt", self.documents_for(self.noa))
 
     def test_rejected_key_still_gets_its_own_error(self):
         def refuse(request, timeout=None):

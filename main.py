@@ -11,7 +11,8 @@ from uuid import uuid4
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 
 from answers import (
-    DEFAULT_INSTRUCTIONS, FIXED_INSTRUCTIONS, MISSING, evidence, extract, mentions_other_customer, run_agent,
+    DEFAULT_INSTRUCTIONS, FIXED_INSTRUCTIONS, MISSING, display_date, evidence, extract, mentions_other_customer,
+    run_agent,
 )
 from store import CloudStore, LocalStore
 
@@ -91,11 +92,13 @@ def create_app(config=None, store=None):
     @app.get("/")
     def home():
         user = session.get("user")
-        docs = [(doc["name"], doc["scope"] == "shared") for scope in (user, "shared")
-                for doc in store.documents(scope)] if user in USERS and user != "admin" else []
+        docs = [{"id": doc["id"], "name": doc["name"], "shared": doc["scope"] == "shared",
+                 "date": display_date(doc["created"])}
+                for scope in (user, "shared") for doc in store.documents(scope)] if user in USERS and user != "admin" else []
         instructions = store.instructions(DEFAULT_INSTRUCTIONS) if user == "admin" else None
         return render_template("page.html", users=USERS, user=user, csrf=csrf(), documents=docs,
                                local=not app.config["CLOUD"], uploaded=request.args.get("uploaded") == "1",
+                               deleted=request.args.get("deleted") == "1",
                                instructions=instructions, fixed_instructions=FIXED_INSTRUCTIONS,
                                max_instructions=MAX_INSTRUCTIONS, saved=request.args.get("saved") == "1")
 
@@ -147,6 +150,14 @@ def create_app(config=None, store=None):
         }, data)
         return redirect(url_for("home", uploaded=1), code=303)
 
+    @app.post("/documents/delete")
+    def delete_document():
+        if signed_in() != "service":
+            abort(403, "רק נציגת שירות יכולה למחוק מדריכים.")
+        if not store.delete_document("shared", request.form.get("document_id", "")):
+            abort(404, "המסמך לא נמצא.")
+        return redirect(url_for("home", deleted=1), code=303)
+
     @app.post("/ask")
     def ask():
         user = chat_user()
@@ -183,6 +194,7 @@ def create_app(config=None, store=None):
     @app.errorhandler(400)
     @app.errorhandler(401)
     @app.errorhandler(403)
+    @app.errorhandler(404)
     @app.errorhandler(413)
     def show_error(error):
         return render_template("error.html", error=error), error.code

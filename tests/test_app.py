@@ -10,7 +10,9 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 from main import create_app
-from store import LocalStore
+from google.api_core.exceptions import NotFound
+
+from store import CloudStore, LocalStore
 from test_agent import FakeOpenRouter, call
 
 
@@ -149,6 +151,127 @@ class AccessTest(unittest.TestCase):
             self.assertIsNotNone(field)
             self.assertNotIn("name=", field[0])
             self.assertIn('type="password"', field[0])
+
+
+class DeleteGuideTest(unittest.TestCase):
+    def setUp(self):
+        data = tempfile.TemporaryDirectory()
+        self.addCleanup(data.cleanup)
+        self.data = data.name
+        self.app = create_app({"TESTING": True, "DATA_DIR": data.name})
+        self.store = LocalStore(data.name)
+        for scope, doc_id, name in (("shared", "guide1", "guide.txt"), ("noa", "receipt1", "receipt.txt")):
+            self.store.add({"id": doc_id, "scope": scope, "name": name, "text": "טקסט", "created": 1.0}, b"")
+
+    def token(self, client):
+        return re.search(r'name="csrf" value="([^"]+)"', client.get("/").get_data(as_text=True))[1]
+
+    def login(self, user, password=None):
+        client = self.app.test_client()
+        fields = {"csrf": self.token(client), "user": user}
+        if password:
+            fields["password"] = password
+        client.post("/login", data=fields)
+        return client
+
+    def service(self):
+        return self.login("service", "service-local")
+
+    def delete(self, client, document_id):
+        return client.post("/documents/delete", data={"csrf": self.token(client), "document_id": document_id})
+
+    def shared(self):
+        return [doc["id"] for doc in self.store.documents("shared")]
+
+    def test_service_deletes_a_shared_guide(self):
+        client = self.service()
+        self.assertIn("guide.txt", client.get("/").get_data(as_text=True))
+        self.assertEqual(self.delete(client, "guide1").status_code, 303)
+        self.assertEqual(self.shared(), [])
+        self.assertNotIn("guide.txt", client.get("/").get_data(as_text=True))
+
+    def test_other_accounts_cannot_delete(self):
+        for client, status in ((self.login("noa"), 403), (self.login("dan"), 403),
+                               (self.login("admin", "service-local"), 403), (self.app.test_client(), 401)):
+            self.assertEqual(self.delete(client, "guide1").status_code, status)
+        self.assertEqual(self.shared(), ["guide1"])
+
+    def test_service_cannot_delete_a_customer_file(self):
+        self.assertEqual(self.delete(self.service(), "receipt1").status_code, 404)
+        self.assertEqual([doc["id"] for doc in self.store.documents("noa")], ["receipt1"])
+
+    def test_unknown_document_is_not_found(self):
+        self.assertEqual(self.delete(self.service(), "missing").status_code, 404)
+
+    def test_delete_needs_a_form_token(self):
+        response = self.service().post("/documents/delete", data={"document_id": "guide1"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.shared(), ["guide1"])
+
+    def test_delete_button_appears_only_for_the_service_account(self):
+        marker = 'action="/documents/delete"'
+        self.assertIn(marker, self.service().get("/").get_data(as_text=True))
+        self.assertNotIn(marker, self.login("noa").get("/").get_data(as_text=True))
+
+    def test_document_list_shows_the_upload_date(self):
+        self.assertIn("01.01.1970", self.service().get("/").get_data(as_text=True))
+
+
+class CloudStoreDeleteTest(unittest.TestCase):
+    """Runs the Firestore and Storage calls against fakes. It never reaches the cloud."""
+
+    def make_store(self, exists=True, blob_error=None):
+        calls = []
+
+        class Snapshot:
+            def __init__(self):
+                self.exists = exists
+
+        class Document:
+            def get(self):
+                return Snapshot()
+
+            def delete(self):
+                calls.append("document deleted")
+
+        class Chain:
+            def collection(self, name):
+                calls.append(name)
+                return self
+
+            def document(self, name):
+                calls.append(name)
+                return self if name == "shared" else Document()
+
+        class Blob:
+            def delete(self):
+                calls.append("blob deleted")
+                if blob_error:
+                    raise blob_error
+
+        class Bucket:
+            def blob(self, path):
+                calls.append(path)
+                return Blob()
+
+        store = CloudStore.__new__(CloudStore)
+        store.db, store.bucket = Chain(), Bucket()
+        return store, calls
+
+    def test_deletes_the_record_and_the_original(self):
+        store, calls = self.make_store()
+        self.assertTrue(store.delete_document("shared", "id1"))
+        self.assertIn("shared/id1", calls)
+        self.assertLess(calls.index("document deleted"), calls.index("blob deleted"))
+
+    def test_missing_record_changes_nothing(self):
+        store, calls = self.make_store(exists=False)
+        self.assertFalse(store.delete_document("shared", "id1"))
+        self.assertNotIn("blob deleted", calls)
+
+    def test_original_that_is_already_gone_still_counts_as_deleted(self):
+        store, _ = self.make_store(blob_error=NotFound("gone"))
+        self.assertTrue(store.delete_document("shared", "id1"))
 
 
 class VisitorKeyTest(unittest.TestCase):

@@ -76,8 +76,8 @@ class ParseMarkdownTest(unittest.TestCase):
         blocks = parse(DEFAULT_INSTRUCTIONS)
         levels = [b["level"] for b in blocks if b["type"] == "heading"]
         self.assertEqual(levels.count(1), 5)
-        self.assertEqual(levels.count(2), 3)
-        self.assertEqual([len(b["items"]) for b in blocks if b["type"] == "list"], [3, 4, 3, 4])
+        self.assertEqual(levels.count(2), 4)
+        self.assertEqual([len(b["items"]) for b in blocks if b["type"] == "list"], [3, 4, 5, 3, 4])
 
 
 if __name__ == "__main__":

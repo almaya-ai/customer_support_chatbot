@@ -154,6 +154,13 @@ class DeployScriptTest(unittest.TestCase):
         flags = self.deploy_call().split()
         self.assertEqual(flags[flags.index("--set-secrets") + 1], "APP_SETTINGS=support-app-settings:latest")
 
+    def test_service_account_can_manage_objects_only_on_its_own_bucket(self):
+        grants = [call for call in self.calls if "add-iam-policy-binding" in call and "buckets" in call]
+        self.assertEqual(len(grants), 1)
+        self.assertIn("roles/storage.objectUser", grants[0])
+        self.assertIn("gs://test-project-support-chatbot", grants[0])
+        self.assertNotIn("objectUser", " ".join(c for c in self.calls if "projects add-iam-policy-binding" in c))
+
     def test_no_openrouter_secret_is_touched(self):
         self.assertEqual([call for call in self.calls if "openrouter" in call.split(" run deploy ")[0].lower()], [])
 

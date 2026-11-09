@@ -47,6 +47,10 @@ class LocalStore:
         with closing(self.connect()) as db, db:
             db.execute("INSERT INTO documents VALUES (?, ?, ?, ?)", (meta["id"], meta["scope"], json.dumps(meta), data))
 
+    def delete_document(self, scope, document_id):
+        with closing(self.connect()) as db, db:
+            return db.execute("DELETE FROM documents WHERE id=? AND scope=?", (document_id, scope)).rowcount > 0
+
     def instructions(self, default):
         with closing(self.connect()) as db, db:
             db.execute("INSERT OR IGNORE INTO settings VALUES ('system_instructions', ?)", (default,))
@@ -78,6 +82,20 @@ class CloudStore:
         # An ambiguous Firestore timeout can mean the write succeeded. Keep the
         # private object for reconciliation instead of deleting a valid upload.
         document.create(meta, timeout=12)
+
+    def delete_document(self, scope, document_id):
+        from google.api_core.exceptions import NotFound
+
+        document = self.db.collection("scopes").document(scope).collection("documents").document(document_id)
+        if not document.get().exists:
+            return False
+        # Remove the record first, so the agent stops using it even if the original lingers.
+        document.delete()
+        try:
+            self.bucket.blob(f"{scope}/{document_id}").delete()
+        except NotFound:
+            pass
+        return True
 
     def instructions(self, default):
         from google.api_core.exceptions import Conflict

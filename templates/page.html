@@ -50,6 +50,7 @@
   <footer class="composer-area">
     <div class="column">
       {% if uploaded %}<p class="toast" role="status">הקובץ נוסף.</p>{% endif %}
+      {% if deleted %}<p class="toast" role="status">המדריך נמחק.</p>{% endif %}
       {% if not local %}
       <div id="key-banner" class="key-banner" hidden>
         <span>כדי לשאול צריך מפתח OpenRouter.</span>
@@ -82,10 +83,10 @@
 
   <div id="documents-panel" class="panel" popover>
     <h2>מסמכים</h2>
-    {% if user == 'service' %}<p>מדריך שתעלו זמין לכל החשבונות.</p>
+    {% if user == 'service' %}<p>מדריך שתעלו זמין לכל החשבונות. כשמדריכים סותרים, החדש קובע. מחיקה היא סופית.</p>
     {% else %}<p>קובץ שתעלו זמין בחשבון שלכם. אפשר גם לגרור קובץ לכל מקום בדף.</p>{% endif %}
     {% if documents %}
-    <ul class="documents">{% for name, shared in documents %}<li><bdi>{{ name }}</bdi><span class="tag">{{ 'משותף' if shared else 'אישי' }}</span></li>{% endfor %}</ul>
+    <ul class="documents">{% for doc in documents %}<li><bdi>{{ doc.name }}</bdi><span class="tag">{{ 'משותף' if doc.shared else 'אישי' }}, {{ doc.date }}</span>{% if user == 'service' and doc.shared %}<form class="delete-document" method="post" action="{{ url_for('delete_document') }}" data-name="{{ doc.name }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="document_id" value="{{ doc.id }}"><button class="ghost danger">מחיקה</button></form>{% endif %}</li>{% endfor %}</ul>
     {% else %}<p class="empty">עוד לא הועלו מסמכים.</p>{% endif %}
     <button type="button" id="panel-attach">הוספת קובץ</button>
     <button type="button" class="ghost close" popovertarget="documents-panel" popovertargetaction="hide">סגירה</button>

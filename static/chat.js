@@ -110,6 +110,7 @@ if (form) {
       for (const quote of result.quotes) {
         const row = element("blockquote", "", quote.text);
         row.dir = "auto";
+        if (quote.date) row.append(element("span", "quote-date", `${quote.source}, ${quote.date}`));
         quotes.append(row);
       }
       reply.append(quotes);
@@ -183,6 +184,12 @@ if (form) {
       form.requestSubmit();
     });
   }
+}
+
+for (const deleteForm of document.querySelectorAll(".delete-document")) {
+  deleteForm.addEventListener("submit", (event) => {
+    if (!window.confirm(`למחוק את ${deleteForm.dataset.name}? אי אפשר לבטל את המחיקה.`)) event.preventDefault();
+  });
 }
 
 const dropZone = document.querySelector("#drop-zone");

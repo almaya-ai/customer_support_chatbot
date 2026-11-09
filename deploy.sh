@@ -37,7 +37,7 @@ fi
 
 for attempt in 1 2 3 4 5 6; do
   if "${G[@]}" storage buckets add-iam-policy-binding "gs://$BUCKET" \
-    --member "serviceAccount:$SA" --role roles/storage.objectCreator >/dev/null; then
+    --member "serviceAccount:$SA" --role roles/storage.objectUser >/dev/null; then
     break
   fi
   [[ "$attempt" != 6 ]] || exit 1

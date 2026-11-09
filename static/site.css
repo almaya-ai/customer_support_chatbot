@@ -137,8 +137,13 @@ button.send { background: var(--accent); color: #fff; }
 .panel .close { justify-self: end; }
 .panel input { width: 100%; }
 .documents { display: grid; gap: 2px; margin: 4px 0; padding: 0; list-style: none; }
-.documents li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 15px; overflow-wrap: anywhere; }
+.documents li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 15px; overflow-wrap: anywhere; }
+.documents bdi { flex: 1; min-width: 8em; }
 .tag { flex: none; color: var(--muted); font-size: 13px; }
+.delete-document { display: block; }
+.danger { padding: 2px 8px; color: #a23b2a; font-size: 13px; }
+.danger:hover { background: #fbeee9; color: #8a2e1f; }
+.quote-date { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
 .revision { text-align: left; opacity: .75; }
 
 .drop-zone { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: #e4f5ee; color: var(--accent); }
