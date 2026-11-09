@@ -10,7 +10,9 @@ from uuid import uuid4
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 
-from answers import DEFAULT_INSTRUCTIONS, FIXED_INSTRUCTIONS, MISSING, evidence, extract, select_with_openrouter
+from answers import (
+    DEFAULT_INSTRUCTIONS, FIXED_INSTRUCTIONS, MISSING, evidence, extract, mentions_other_customer, run_agent,
+)
 from store import CloudStore, LocalStore
 
 
@@ -154,27 +156,28 @@ def create_app(config=None, store=None):
         key = request.form.get("openrouter_key", "").strip()
         if app.config["CLOUD"] and not key:
             return jsonify(error="כדי לשאול, הזינו מפתח OpenRouter בהגדרות שבראש הדף."), 400
-        choices = evidence(user, question, store)
         model = app.config["OPENROUTER_MODEL"]
-        mode = "openrouter" if key and model else "local"
-        if not choices:
-            mode = "search"
-        if choices and mode == "openrouter":
+        if mentions_other_customer(user, question, store):
+            return jsonify(answer=MISSING, sources=[], checked=[], mode="search")
+        if key and model:
             try:
-                choices = select_with_openrouter(question, choices, key, model, store.instructions(DEFAULT_INSTRUCTIONS))
+                result = run_agent(user, question, store, key, model, store.instructions(DEFAULT_INSTRUCTIONS))
             except (URLError, TimeoutError, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
                 if isinstance(exc, HTTPError) and exc.code in (401, 402):
                     app.logger.warning("OpenRouter rejected the visitor key: %s", exc.code)
                     return jsonify(error="מפתח OpenRouter נדחה או שאין בו יתרה. בדקו אותו בהגדרות."), 400
-                app.logger.warning("OpenRouter could not select evidence")
+                app.logger.warning("The agent could not finish: %s", type(exc).__name__)
                 return jsonify(error="החיבור למודל לא זמין כרגע. נסו שוב."), 502
+            return jsonify(answer="\n".join(row["text"] for row in result["rows"]) or MISSING,
+                           sources=result["sources"], checked=result["checked"], mode="openrouter")
+        choices = evidence(user, question, store)
         sources = {}
         for row in choices[:2]:
             if "receipt_source" in row:
                 sources[row["receipt_source"]] = None
             sources[row["source"]] = None
-        return jsonify(answer="\n".join(row["text"] for row in choices[:2]) or MISSING,
-                       sources=list(sources), mode=mode)
+        return jsonify(answer="\n".join(row["text"] for row in choices[:2]) or MISSING, sources=list(sources),
+                       checked=[], mode="local" if choices else "search")
 
     @app.errorhandler(400)
     @app.errorhandler(401)

@@ -74,6 +74,9 @@ if (form) {
         reply.append(sources);
       }
       if (result.mode === "local") reply.append(element("small", "", "תצוגת מקורות ללא מודל"));
+      if (result.checked?.length) {
+        reply.append(element("small", "checked", "הסוכן בדק: " + result.checked.join(", ")));
+      }
     } catch {
       text.textContent = "הבקשה נכשלה. רעננו את הדף ונסו שוב.";
     } finally {

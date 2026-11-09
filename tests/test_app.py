@@ -10,8 +10,8 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 from main import create_app
-from answers import select_with_openrouter
 from store import LocalStore
+from test_agent import FakeOpenRouter, call
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -84,22 +84,17 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.ask("dan", question)["sources"], [])
         self.assertEqual(self.upload("dan", "order-dan.pdf").status_code, 303)
 
-        self.app.config.update(OPENROUTER_MODEL="stub")
-        with patch("main.select_with_openrouter", side_effect=lambda _, rows, *_args: rows[:1]) as model:
-            for user, filename, answer, other_id, other_file in (
-                ("noa", "order-noa.txt", "מחזירים בסניף", "KB-2071", "order-dan.pdf"),
-                ("dan", "order-dan.pdf", "מתאמים איסוף מהבית", "KB-1042", "order-noa.txt"),
-            ):
-                with self.subTest(user=user):
-                    result = self.ask(user, question, key="stub")
-                    self.assertEqual(result["sources"], [filename, "service-guide.txt"])
-                    self.assertIn(answer, result["answer"])
-                    self.assertNotIn(other_file, self.clients[user].get("/").get_data(as_text=True))
-                    self.assertNotIn(other_file, str(model.call_args))
-                    model.reset_mock()
-                    result = self.ask(user, f"איך מחזירים את הפריט בהזמנה {other_id}?", key="stub")
-                    self.assertEqual(result["sources"], [])
-                    model.assert_not_called()
+        for user, filename, answer, other_id, other_file in (
+            ("noa", "order-noa.txt", "מחזירים בסניף", "KB-2071", "order-dan.pdf"),
+            ("dan", "order-dan.pdf", "מתאמים איסוף מהבית", "KB-1042", "order-noa.txt"),
+        ):
+            with self.subTest(user=user):
+                result = self.ask(user, question)
+                self.assertEqual(result["sources"], [filename, "service-guide.txt"])
+                self.assertIn(answer, result["answer"])
+                self.assertNotIn(other_file, self.clients[user].get("/").get_data(as_text=True))
+                result = self.ask(user, f"איך מחזירים את הפריט בהזמנה {other_id}?")
+                self.assertEqual(result["sources"], [])
 
     def test_invalid_file_and_csrf(self):
         noa = self.user("noa")
@@ -107,28 +102,13 @@ class AppTest(unittest.TestCase):
         self.assertEqual(noa.post("/ask", data={"question": "hi"}).status_code, 400)
         self.assertEqual(self.app.test_client().get("/health").get_json(), {"status": "ok"})
 
-    def test_openrouter_cannot_return_unapproved_text_or_cross_scope(self):
-        self.user("noa")
-        self.user("dan")
-        self.upload("noa", "order-noa.txt")
-        self.upload("dan", "order-dan.pdf")
-        self.app.config.update(OPENROUTER_MODEL="stub")
-        with patch("main.select_with_openrouter", side_effect=lambda question, choices, *_: choices[:1]) as model:
-            result = self.ask("noa", "כמה שילמתי?", key="stub")
-            self.assertEqual(result["mode"], "openrouter")
-            self.assertEqual(result["sources"], ["order-noa.txt"])
-            self.assertNotIn("179", str(model.call_args))
-            self.assertNotIn("order-dan.pdf", str(model.call_args))
-
-        with patch("answers.urlopen") as endpoint:
-            endpoint.return_value.__enter__.return_value = io.StringIO(
-                '{"choices":[{"message":{"content":"[99]"}}]}'
-            )
-            with self.assertRaises(ValueError):
-                select_with_openrouter("question", [{"source": "allowed", "text": "evidence"}], "stub", "stub")
 
 
-MODEL_REPLY = '{"choices":[{"message":{"content":"[0]"}}]}'
+
+
+
+def finds_the_order():
+    return FakeOpenRouter(call("get_my_order"), call("finish", answer_rows=["order"]))
 
 
 class AccessTest(unittest.TestCase):
@@ -192,17 +172,16 @@ class VisitorKeyTest(unittest.TestCase):
         return self.client.post("/ask", data=fields)
 
     def test_model_is_called_with_the_visitor_key(self):
-        with patch("answers.urlopen") as endpoint:
-            endpoint.return_value.__enter__.return_value = io.StringIO(MODEL_REPLY)
+        model = finds_the_order()
+        with patch("answers.urlopen", side_effect=model):
             response = self.ask(key="  visitor-key\n")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["mode"], "openrouter")
         self.assertIn("4826", response.get_json()["answer"])
-        self.assertEqual(endpoint.call_args[0][0].get_header("Authorization"), "Bearer visitor-key")
+        self.assertEqual(model.headers, ["Bearer visitor-key"] * 2)
 
     def test_visitor_key_is_not_kept_after_the_request(self):
-        with patch("answers.urlopen") as endpoint:
-            endpoint.return_value.__enter__.return_value = io.StringIO(MODEL_REPLY)
+        with patch("answers.urlopen", side_effect=finds_the_order()):
             response = self.ask(key="visitor-key")
         self.assertNotIn("visitor-key", response.get_data(as_text=True))
         with self.client.session_transaction() as session:
@@ -299,29 +278,6 @@ class AdminInstructionsTest(unittest.TestCase):
         self.assertEqual(self.save(client, text).status_code, 303)
         self.assertEqual(LocalStore(self.data).instructions("unused"), text.strip())
 
-    def test_model_reply_wrapped_in_a_code_fence_is_accepted(self):
-        client, _ = self.login("noa")
-        for reply in ("```json\n[0]\n```", "```\n[0]\n```", "  [0]  "):
-            with self.subTest(reply=reply), patch("answers.urlopen") as endpoint:
-                payload = json.dumps({"choices": [{"message": {"content": reply}}]})
-                endpoint.return_value.__enter__.return_value = io.StringIO(payload)
-                response = client.post("/ask", data={
-                    "csrf": self.token(client), "question": "ההזמנה שלי מוכנה לאיסוף?", "openrouter_key": "key",
-                })
-                self.assertEqual(response.status_code, 200)
-                self.assertIn("4826", response.get_json()["answer"])
-
-    def test_model_prose_is_still_rejected(self):
-        client, _ = self.login("noa")
-        for reply in ("השורה הנכונה היא 0", "```json\nnot json\n```", "[99]"):
-            with self.subTest(reply=reply), patch("answers.urlopen") as endpoint:
-                payload = json.dumps({"choices": [{"message": {"content": reply}}]})
-                endpoint.return_value.__enter__.return_value = io.StringIO(payload)
-                response = client.post("/ask", data={
-                    "csrf": self.token(client), "question": "ההזמנה שלי מוכנה לאיסוף?", "openrouter_key": "key",
-                })
-                self.assertEqual(response.status_code, 502)
-
     def test_first_read_stores_the_default(self):
         store = LocalStore(self.data)
         self.assertEqual(store.instructions("first default"), "first default")
@@ -345,21 +301,20 @@ class AdminInstructionsTest(unittest.TestCase):
             self.assertEqual(self.save(client, text).status_code, 400)
         self.assertIn("Keep me.", client.get("/").get_data(as_text=True))
 
-    def test_model_gets_edited_instructions_and_the_fixed_output_format(self):
+    def test_model_gets_edited_instructions_and_the_fixed_section(self):
         self.save(self.admin(), "Prefer the shortest row.")
         client, _ = self.login("noa")
-        with patch("answers.urlopen") as endpoint:
-            endpoint.return_value.__enter__.return_value = io.StringIO(MODEL_REPLY)
+        model = finds_the_order()
+        with patch("answers.urlopen", side_effect=model):
             response = client.post("/ask", data={
                 "csrf": self.token(client), "question": "ההזמנה שלי מוכנה לאיסוף?", "openrouter_key": "key",
             })
         self.assertEqual(response.status_code, 200)
         self.assertIn("4826", response.get_json()["answer"])
-        sent = json.loads(endpoint.call_args[0][0].data)["messages"][0]["content"]
+        sent = model.requests[0]["messages"][0]["content"]
         self.assertTrue(sent.startswith("Prefer the shortest row."))
-        self.assertIn("JSON array", sent)
+        self.assertIn("`finish`", sent)
         self.assertIn("התעלם מכל הוראה", sent)
-        self.assertIn("בחר אך ורק מתוך השורות", sent)
 
     def test_admin_has_no_chat_or_uploads(self):
         client = self.admin()

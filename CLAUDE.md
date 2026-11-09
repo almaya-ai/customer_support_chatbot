@@ -1,6 +1,6 @@
 # customer_support_chatbot
 
-שירות Flask ב-Cloud Run. הוא שומר מסמכים ב-Cloud Storage, מחפש בהזמנות ובמסמכים מורשים ב-Firestore ומשתמש ב-OpenRouter לבחירת קטעי מקור.
+שירות Flask ב-Cloud Run. הוא שומר מסמכים ב-Cloud Storage, וסוכן דרך OpenRouter מחפש בהזמנה ובמסמכים המורשים של החשבון בלולאה עם כלים, ובוחר את שורות התשובה.
 
 ## פקודות
 
