@@ -82,7 +82,7 @@ def create_app(config=None, store=None):
             abort(403, "לאדמין אין גישה לצ׳אט או להעלאת קבצים.")
         return user
 
-    @app.get("/healthz")
+    @app.get("/health")
     def health():
         return jsonify(status="ok")
 

@@ -3,8 +3,11 @@ import os
 import re
 import stat
 import subprocess
+import sys
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,6 +57,63 @@ class CloudConfigTest(unittest.TestCase):
                 client.post("/logout", base_url="https://localhost", data={"csrf": token})
                 page = client.get("/", base_url="https://localhost").get_data(as_text=True)
                 token = re.search(r'name="csrf" value="([^"]+)"', page)[1]
+
+
+class HealthServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
+class LiveCheckTest(unittest.TestCase):
+    """Runs the live check against a fake gcloud and a local server. It never reaches the cloud."""
+
+    def run_check(self, respond):
+        requested = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requested.append((self.path, self.headers.get("Authorization")))
+                status, headers, body = respond(self.path)
+                self.send_response(status)
+                for name, value in headers.items():
+                    self.send_header(name, value)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = HealthServer(("127.0.0.1", 0), Handler)
+        self.addCleanup(server.server_close)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        with tempfile.TemporaryDirectory() as folder:
+            fake = Path(folder) / "gcloud"
+            fake.write_text(f"#!/bin/sh\necho http://127.0.0.1:{server.server_port}\n")
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+            env = dict(os.environ, PATH=f'{folder}:{os.environ["PATH"]}', PROJECT="test-project")
+            result = subprocess.run(
+                [sys.executable, str(ROOT / ".claude/skills/live-check/check.py")],
+                env=env, capture_output=True, text=True, timeout=30,
+            )
+        return result, requested
+
+    def test_passes_when_the_health_route_answers(self):
+        def respond(path):
+            if path == "/health":
+                return 200, {"Cache-Control": "no-store"}, b'{"status": "ok"}'
+            return 404, {}, b"not found"
+
+        result, requested = self.run_check(respond)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(requested, [("/health", None)])
+
+    def test_fails_when_the_route_is_missing(self):
+        result, _ = self.run_check(lambda path: (404, {}, b"not found"))
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_fails_on_an_unexpected_body(self):
+        result, _ = self.run_check(lambda path: (200, {"Cache-Control": "no-store"}, b'{"status": "bad"}'))
+        self.assertNotEqual(result.returncode, 0)
 
 
 class DeployScriptTest(unittest.TestCase):

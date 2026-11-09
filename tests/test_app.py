@@ -104,7 +104,7 @@ class AppTest(unittest.TestCase):
         noa = self.user("noa")
         self.assertEqual(self.upload("noa", "broken.pdf", b"fake").status_code, 400)
         self.assertEqual(noa.post("/ask", data={"question": "hi"}).status_code, 400)
-        self.assertEqual(self.app.test_client().get("/healthz").get_json(), {"status": "ok"})
+        self.assertEqual(self.app.test_client().get("/health").get_json(), {"status": "ok"})
 
     def test_openrouter_cannot_return_unapproved_text_or_cross_scope(self):
         self.user("noa")

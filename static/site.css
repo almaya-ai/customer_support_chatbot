@@ -6,19 +6,19 @@ body { margin: 0; color: var(--ink); font: 16px/1.6 system-ui, "Segoe UI", Arial
 
 /* Separate colour clouds behind every page, each on its own path and pace. */
 .sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.sky i { position: absolute; width: 76vmax; height: 76vmax; border-radius: 50%; will-change: transform; }
-.sky i:nth-child(1) { top: -24vmax; left: -18vmax; background: radial-gradient(closest-side, #bdebd6, transparent); animation: cloud-a 23s ease-in-out infinite alternate; }
-.sky i:nth-child(2) { top: -28vmax; right: -16vmax; background: radial-gradient(closest-side, #fbd8cd, transparent); animation: cloud-b 29s ease-in-out -6s infinite alternate; }
-.sky i:nth-child(3) { bottom: -30vmax; right: -8vmax; background: radial-gradient(closest-side, #d8cdf8, transparent); animation: cloud-c 26s ease-in-out -11s infinite alternate; }
-.sky i:nth-child(4) { bottom: -28vmax; left: -14vmax; background: radial-gradient(closest-side, #fcebb8, transparent); animation: cloud-d 31s ease-in-out -4s infinite alternate; }
-.sky i:nth-child(5) { top: 12vh; left: 22vw; width: 60vmax; height: 60vmax; background: radial-gradient(closest-side, #c5e2fb, transparent); animation: cloud-e 21s ease-in-out -9s infinite alternate; }
-.sky i:nth-child(6) { top: 28vh; right: 18vw; width: 56vmax; height: 56vmax; background: radial-gradient(closest-side, #f8d3e8, transparent); animation: cloud-f 27s ease-in-out -14s infinite alternate; }
-@keyframes cloud-a { 0% { transform: translate3d(0, 0, 0) scale(1); } 45% { transform: translate3d(26vw, 16vh, 0) scale(1.14); } 100% { transform: translate3d(8vw, 42vh, 0) scale(.9); } }
-@keyframes cloud-b { 0% { transform: translate3d(0, 0, 0) scale(1.05); } 55% { transform: translate3d(-30vw, 22vh, 0) scale(.88); } 100% { transform: translate3d(-10vw, 48vh, 0) scale(1.15); } }
-@keyframes cloud-c { 0% { transform: translate3d(0, 0, 0) scale(.95); } 40% { transform: translate3d(-34vw, -14vh, 0) scale(1.15); } 100% { transform: translate3d(-12vw, -44vh, 0) scale(1); } }
-@keyframes cloud-d { 0% { transform: translate3d(0, 0, 0) scale(1.1); } 50% { transform: translate3d(32vw, -20vh, 0) scale(.9); } 100% { transform: translate3d(14vw, -46vh, 0) scale(1.1); } }
-@keyframes cloud-e { 0% { transform: translate3d(-22vw, -8vh, 0) scale(.9); } 60% { transform: translate3d(14vw, 20vh, 0) scale(1.2); } 100% { transform: translate3d(38vw, -14vh, 0) scale(1); } }
-@keyframes cloud-f { 0% { transform: translate3d(24vw, 14vh, 0) scale(1.1); } 50% { transform: translate3d(-16vw, -22vh, 0) scale(.9); } 100% { transform: translate3d(-40vw, 18vh, 0) scale(1.15); } }
+.sky i { position: absolute; width: 64vmax; height: 64vmax; border-radius: 50%; will-change: transform; }
+.sky i:nth-child(1) { top: -24vmax; left: -22vmax; background: radial-gradient(closest-side, #a9e8cd 0%, #a9e8cd 22%, transparent); animation: cloud-a 14s ease-in-out infinite alternate; }
+.sky i:nth-child(2) { top: -28vmax; right: -20vmax; background: radial-gradient(closest-side, #fbc9b8 0%, #fbc9b8 22%, transparent); animation: cloud-b 18s ease-in-out -5s infinite alternate; }
+.sky i:nth-child(3) { bottom: -30vmax; right: -14vmax; background: radial-gradient(closest-side, #cbbcf8 0%, #cbbcf8 22%, transparent); animation: cloud-c 16s ease-in-out -9s infinite alternate; }
+.sky i:nth-child(4) { bottom: -28vmax; left: -18vmax; background: radial-gradient(closest-side, #fce29c 0%, #fce29c 22%, transparent); animation: cloud-d 20s ease-in-out -3s infinite alternate; }
+.sky i:nth-child(5) { top: 8vh; left: 8vw; width: 50vmax; height: 50vmax; background: radial-gradient(closest-side, #aed9fb 0%, #aed9fb 22%, transparent); animation: cloud-e 12s ease-in-out -7s infinite alternate; }
+.sky i:nth-child(6) { top: 22vh; right: 6vw; width: 46vmax; height: 46vmax; background: radial-gradient(closest-side, #f7c0e1 0%, #f7c0e1 22%, transparent); animation: cloud-f 17s ease-in-out -11s infinite alternate; }
+@keyframes cloud-a { 0% { transform: translate3d(0, 0, 0) scale(1); } 45% { transform: translate3d(34vw, 28vh, 0) scale(1.22); } 100% { transform: translate3d(4vw, 66vh, 0) scale(.82); } }
+@keyframes cloud-b { 0% { transform: translate3d(0, 0, 0) scale(1.1); } 55% { transform: translate3d(-42vw, 30vh, 0) scale(.8); } 100% { transform: translate3d(-4vw, 72vh, 0) scale(1.2); } }
+@keyframes cloud-c { 0% { transform: translate3d(0, 0, 0) scale(.9); } 40% { transform: translate3d(-46vw, -26vh, 0) scale(1.24); } 100% { transform: translate3d(-6vw, -68vh, 0) scale(.95); } }
+@keyframes cloud-d { 0% { transform: translate3d(0, 0, 0) scale(1.15); } 50% { transform: translate3d(44vw, -30vh, 0) scale(.82); } 100% { transform: translate3d(6vw, -70vh, 0) scale(1.15); } }
+@keyframes cloud-e { 0% { transform: translate3d(-30vw, -10vh, 0) scale(.85); } 60% { transform: translate3d(22vw, 34vh, 0) scale(1.28); } 100% { transform: translate3d(62vw, -18vh, 0) scale(.95); } }
+@keyframes cloud-f { 0% { transform: translate3d(30vw, 20vh, 0) scale(1.15); } 50% { transform: translate3d(-24vw, -34vh, 0) scale(.82); } 100% { transform: translate3d(-62vw, 26vh, 0) scale(1.22); } }
 @media (prefers-reduced-motion: reduce) { .sky i { animation: none; } }
 
 h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.3; }
