@@ -1,3 +1,4 @@
+import html
 import io
 import json
 import os
@@ -278,8 +279,38 @@ class AdminInstructionsTest(unittest.TestCase):
 
     def test_admin_page_shows_current_instructions_before_any_edit(self):
         page = self.admin().get("/").get_data(as_text=True)
-        self.assertIn("Choose at most two evidence rows", page)
+        self.assertIn("# תפקיד", page)
         self.assertIn('name="instructions"', page)
+
+    def test_default_instructions_can_be_saved_back_unchanged(self):
+        client = self.admin()
+        page = client.get("/").get_data(as_text=True)
+        text = html.unescape(re.search(r'<textarea name="instructions"[^>]*>(.*?)</textarea>', page, re.S)[1])
+        self.assertEqual(self.save(client, text).status_code, 303)
+        self.assertEqual(LocalStore(self.data).instructions("unused"), text.strip())
+
+    def test_model_reply_wrapped_in_a_code_fence_is_accepted(self):
+        client, _ = self.login("noa")
+        for reply in ("```json\n[0]\n```", "```\n[0]\n```", "  [0]  "):
+            with self.subTest(reply=reply), patch("answers.urlopen") as endpoint:
+                payload = json.dumps({"choices": [{"message": {"content": reply}}]})
+                endpoint.return_value.__enter__.return_value = io.StringIO(payload)
+                response = client.post("/ask", data={
+                    "csrf": self.token(client), "question": "ההזמנה שלי מוכנה לאיסוף?", "openrouter_key": "key",
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("4826", response.get_json()["answer"])
+
+    def test_model_prose_is_still_rejected(self):
+        client, _ = self.login("noa")
+        for reply in ("השורה הנכונה היא 0", "```json\nnot json\n```", "[99]"):
+            with self.subTest(reply=reply), patch("answers.urlopen") as endpoint:
+                payload = json.dumps({"choices": [{"message": {"content": reply}}]})
+                endpoint.return_value.__enter__.return_value = io.StringIO(payload)
+                response = client.post("/ask", data={
+                    "csrf": self.token(client), "question": "ההזמנה שלי מוכנה לאיסוף?", "openrouter_key": "key",
+                })
+                self.assertEqual(response.status_code, 502)
 
     def test_first_read_stores_the_default(self):
         store = LocalStore(self.data)
