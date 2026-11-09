@@ -2,6 +2,8 @@ const KEY_NAME = "openrouter-key";
 const MAX_UPLOAD = 2 * 1024 * 1024;
 const keyField = document.querySelector("#openrouter-key");
 const keyStatus = document.querySelector("#key-status");
+const keyButton = document.querySelector("#key-button");
+const keyBanner = document.querySelector("#key-banner");
 
 function storedKey() {
   try {
@@ -12,7 +14,10 @@ function storedKey() {
 }
 
 function showKeyStatus() {
-  keyStatus.textContent = keyField.value.trim() ? "המפתח מוגדר בלשונית הזו." : "עדיין לא הוגדר מפתח.";
+  const ready = Boolean(keyField.value.trim());
+  keyStatus.textContent = ready ? "המפתח מוגדר בלשונית הזו." : "עדיין לא הוגדר מפתח.";
+  if (keyButton) keyButton.toggleAttribute("data-ready", ready);
+  if (keyBanner) keyBanner.hidden = ready;
 }
 
 if (keyField) {
@@ -28,44 +33,62 @@ if (keyField) {
   });
 }
 
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
 const form = document.querySelector("#ask");
 if (form) {
+  const welcome = document.querySelector("#welcome");
   const answer = document.querySelector("#answer");
   const question = form.elements.question;
-  const button = form.querySelector("button");
+  const send = document.querySelector("#send");
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const prompt = document.createElement("strong");
-    const reply = document.createElement("p");
-    prompt.textContent = question.value;
-    reply.textContent = "מחפש תשובה…";
-    answer.replaceChildren(prompt, reply);
+    const text = element("p", "", "מחפש תשובה…");
+    const reply = element("div", "reply waiting");
+    reply.append(text);
+    // The service keeps no history, so each question replaces the previous one.
+    answer.replaceChildren(element("p", "bubble", question.value), reply);
     answer.hidden = false;
+    welcome.hidden = true;
     const body = new FormData(form);
     body.set("openrouter_key", keyField.value.trim());
-    button.disabled = true;
+    send.disabled = true;
     question.value = "";
     try {
       const response = await fetch(form.action, {method: "POST", body});
       const result = await response.json();
-      reply.textContent = result.answer || result.error;
+      text.textContent = result.answer || result.error;
       if (result.sources?.length) {
-        const sources = document.createElement("small");
-        sources.textContent = "מקורות · " + result.sources.join(" · ");
-        answer.append(sources);
+        const sources = element("div", "sources", "מקורות");
+        for (const source of result.sources) {
+          const chip = element("bdi", "source", source);
+          chip.dir = "auto";
+          sources.append(chip);
+        }
+        reply.append(sources);
       }
-      if (result.mode === "local") {
-        const mode = document.createElement("small");
-        mode.textContent = "תצוגת מקורות ללא מודל";
-        answer.append(mode);
-      }
+      if (result.mode === "local") reply.append(element("small", "", "תצוגת מקורות ללא מודל"));
     } catch {
-      reply.textContent = "הבקשה נכשלה. רעננו את הדף ונסו שוב.";
+      text.textContent = "הבקשה נכשלה. רעננו את הדף ונסו שוב.";
     } finally {
-      button.disabled = false;
+      reply.classList.remove("waiting");
+      send.disabled = false;
       question.focus();
     }
   });
+
+  for (const suggestion of document.querySelectorAll(".suggestion")) {
+    suggestion.addEventListener("click", () => {
+      question.value = suggestion.textContent;
+      form.requestSubmit();
+    });
+  }
 }
 
 const dropZone = document.querySelector("#drop-zone");
@@ -73,6 +96,7 @@ if (dropZone) {
   const fileInput = document.querySelector("#upload-file");
   const fileStatus = document.querySelector("#file-status");
   const uploadButton = document.querySelector("#upload-button");
+  const pending = document.querySelector("#pending");
   const carriesFile = (event) => event.dataTransfer?.types?.includes("Files");
 
   function fileProblem(files) {
@@ -81,6 +105,25 @@ if (dropZone) {
     if (files[0].size > MAX_UPLOAD) return "אפשר להעלות עד 2 MB.";
     if (files[0].size === 0) return "הקובץ ריק.";
     return "";
+  }
+
+  function offerFile(files) {
+    const problem = fileProblem(files);
+    const name = files[0]?.name;
+    if (problem) {
+      fileInput.value = "";
+    } else if (fileInput.files !== files) {
+      fileInput.files = files;
+    }
+    fileStatus.textContent = problem || `הקובץ ${name} נבדק ומוכן להעלאה.`;
+    uploadButton.hidden = Boolean(problem);
+    pending.hidden = false;
+    if (!problem) uploadButton.focus();
+  }
+
+  function clearFile() {
+    fileInput.value = "";
+    pending.hidden = true;
   }
 
   window.addEventListener("dragenter", (event) => {
@@ -100,19 +143,16 @@ if (dropZone) {
     if (!carriesFile(event)) return;
     event.preventDefault();
     dropZone.hidden = true;
-    const files = event.dataTransfer.files;
-    const problem = fileProblem(files);
-    fileInput.value = "";
-    if (problem) {
-      fileStatus.textContent = problem;
-    } else {
-      fileInput.files = files;
-      fileStatus.textContent = `הקובץ ${files[0].name} נבדק ומוכן להעלאה. לחצו על ״העלאה״.`;
-    }
-    fileInput.closest("form").scrollIntoView({behavior: "smooth", block: "center"});
-    if (!problem) uploadButton.focus({preventScroll: true});
+    offerFile(event.dataTransfer.files);
   });
+
   fileInput.addEventListener("change", () => {
-    fileStatus.textContent = "";
+    if (fileInput.files.length) offerFile(fileInput.files);
+  });
+  document.querySelector("#cancel-file").addEventListener("click", clearFile);
+  document.querySelector("#attach").addEventListener("click", () => fileInput.click());
+  document.querySelector("#panel-attach").addEventListener("click", () => {
+    document.querySelector("#documents-panel").hidePopover();
+    fileInput.click();
   });
 }

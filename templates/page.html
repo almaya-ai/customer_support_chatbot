@@ -1,4 +1,5 @@
 <!doctype html>
+{% set chat = user and user != 'admin' %}
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
@@ -7,16 +8,108 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='site.css') }}">
   <script defer src="{{ url_for('static', filename='chat.js') }}"></script>
 </head>
-<body><main>
+{% if chat %}
+<body class="chat">
+  <div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="drop-zone" class="drop-zone" hidden><div><strong>שחררו את הקובץ כאן</strong><span>TXT או PDF עם טקסט, עד 2 MB</span></div></div>
+
+  <div class="frame">
+  <header class="topbar">
+    <span class="brand">קו לבית</span>
+    <nav class="tools" aria-label="כלים">
+      <button type="button" class="ghost" popovertarget="documents-panel">מסמכים{% if documents %} <span class="count">{{ documents|length }}</span>{% endif %}</button>
+      <button type="button" class="ghost" id="key-button" popovertarget="key-panel"><span class="dot" aria-hidden="true"></span>מפתח</button>
+      <span class="who">{{ users[user].split(' | ')[0] }}</span>
+      <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost">יציאה</button></form>
+    </nav>
+  </header>
+
+  <main class="conversation">
+    <div class="column">
+      <div id="welcome" class="welcome">
+        {% if uploaded %}<p class="toast" role="status">הקובץ נוסף.</p>{% endif %}
+        <h1>שלום {{ users[user].split(' | ')[0] }}, במה אפשר לעזור?</h1>
+        {% if user != 'service' %}<p>אפשר לשאול על מצב ההזמנה, על פרטים באישור שהעליתם או על מדיניות החנות.</p>
+        {% else %}<p>אפשר לשאול על מדיניות החנות ועל מדריכים משותפים.</p>{% endif %}
+        <div class="suggestions">
+          {% if user != 'service' %}
+          <button type="button" class="suggestion">ההזמנה שלי מוכנה לאיסוף?</button>
+          <button type="button" class="suggestion">כמה שילמתי?</button>
+          <button type="button" class="suggestion">איך מחזירים את מה שקניתי בהזמנה שבקובץ?</button>
+          {% else %}
+          <button type="button" class="suggestion">תוך כמה ימים אפשר להחזיר מוצר?</button>
+          <button type="button" class="suggestion">מתי נציגי השירות עונים?</button>
+          {% endif %}
+        </div>
+      </div>
+      <div id="answer" class="exchange" aria-live="polite" hidden></div>
+    </div>
+  </main>
+
+  <footer class="composer-area">
+    <div class="column">
+      {% if not local %}
+      <div id="key-banner" class="key-banner" hidden>
+        <span>כדי לשאול צריך מפתח OpenRouter.</span>
+        <button type="button" class="link" popovertarget="key-panel">הזנת מפתח</button>
+      </div>
+      {% endif %}
+      <form id="upload-form" method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input id="upload-file" class="visually-hidden" type="file" name="file" accept=".txt,.pdf" required tabindex="-1" aria-label="בחירת קובץ">
+        <div id="pending" class="pending" hidden>
+          <span id="file-status" role="status"></span>
+          <button id="upload-button">העלאה</button>
+          <button type="button" id="cancel-file" class="ghost">ביטול</button>
+        </div>
+      </form>
+      <form id="ask" class="composer" action="{{ url_for('ask') }}" method="post">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="button" id="attach" class="icon" aria-label="צירוף קובץ" title="צירוף קובץ">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20.5 11.5-8.4 8.4a5 5 0 0 1-7.1-7.1l8.8-8.8a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8.1-8"/></svg>
+        </button>
+        <input name="question" maxlength="500" required autofocus autocomplete="off" placeholder="כתבו שאלה" aria-label="השאלה שלכם">
+        <button id="send" class="send" aria-label="שליחה" title="שליחה">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        </button>
+      </form>
+      <p class="hint">כל שאלה נענית בנפרד, בלי זיכרון של שאלות קודמות.</p>
+    </div>
+  </footer>
+  </div>
+
+  <div id="documents-panel" class="panel" popover>
+    <h2>מסמכים</h2>
+    {% if user == 'service' %}<p>מדריך שתעלו זמין לכל החשבונות.</p>
+    {% else %}<p>קובץ שתעלו זמין בחשבון שלכם. אפשר גם לגרור קובץ לכל מקום בדף.</p>{% endif %}
+    {% if documents %}
+    <ul class="documents">{% for name, shared in documents %}<li><bdi>{{ name }}</bdi><span class="tag">{{ 'משותף' if shared else 'אישי' }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="empty">עוד לא הועלו מסמכים.</p>{% endif %}
+    <button type="button" id="panel-attach">הוספת קובץ</button>
+    <button type="button" class="ghost close" popovertarget="documents-panel" popovertargetaction="hide">סגירה</button>
+  </div>
+
+  <div id="key-panel" class="panel" popover>
+    <h2>מפתח OpenRouter</h2>
+    <label class="visually-hidden" for="openrouter-key">מפתח OpenRouter</label>
+    <input id="openrouter-key" type="password" autocomplete="off" spellcheck="false">
+    <small>המפתח נשמר בלשונית הזו בלבד ונשלח עם כל שאלה. השרת לא שומר אותו.</small>
+    <small id="key-status" role="status"></small>
+    <button type="button" class="ghost close" popovertarget="key-panel" popovertargetaction="hide">סגירה</button>
+    <small class="revision" dir="ltr">revision {{ revision }}</small>
+  </div>
+</body>
+{% else %}
+<body class="plain">
+<div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<main class="card">
   <header><p class="file">קו לבית</p><h1>צ׳אט שירות לקוחות</h1></header>
-  {% if user != 'admin' %}
+  {% if not user %}
   <section><h2>הגדרות</h2>
     <label>מפתח OpenRouter<input id="openrouter-key" type="password" autocomplete="off" spellcheck="false"></label>
     <small>המפתח נשמר בלשונית הזו בלבד ונשלח עם כל שאלה. השרת לא שומר אותו.</small>
     <small id="key-status" role="status"></small>
   </section>
-  {% endif %}
-  {% if not user %}
   <section><h2>כניסה לחשבון</h2>
     {% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
     <form method="post" action="{{ url_for('login') }}">
@@ -31,7 +124,6 @@
   <div class="bar"><strong>{{ users[user] }}</strong>
     <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">יציאה</button></form>
   </div>
-  {% if user == 'admin' %}
   <section><h2>הוראות המערכת</h2>
     <p>ההוראות נשלחות למודל בכל שאלה, והשינוי חל מיד אחרי השמירה.</p>
     {% if saved %}<p class="notice" role="status">ההוראות נשמרו.</p>{% endif %}
@@ -42,31 +134,8 @@
     </form>
     <small>השרת תמיד מוסיף את הדרישה הזו, כדי שתשובת המודל תישאר בפורמט שהוא מאמת: <bdi dir="ltr">{{ output_format }}</bdi></small>
   </section>
-  {% else %}
-  <div id="drop-zone" class="drop-zone" hidden><div><strong>שחררו את הקובץ כאן</strong><span>TXT או PDF עם טקסט, עד 2 MB</span></div></div>
-  <section><h2>שואלים את החנות</h2>
-    {% if user != 'service' %}<p>אפשר לשאול על מצב ההזמנה, על פרטים באישור שהעליתם או על מדיניות החנות.</p>
-    {% else %}<p>אפשר לשאול על מדיניות החנות ועל מדריכים משותפים.</p>{% endif %}
-    <small>כל שאלה נענית בנפרד. הצ׳אט לא זוכר שאלות קודמות.</small>
-    <div id="answer" class="answer" aria-live="polite" hidden></div>
-    <form id="ask" action="{{ url_for('ask') }}" method="post">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <label>השאלה שלכם<input name="question" maxlength="500" required></label><button>שליחה</button>
-    </form>
-  </section>
-  <section><h2>מסמכים</h2>
-    {% if user == 'service' %}<p>מדריך שתעלו זמין לכל החשבונות.</p>
-    {% else %}<p>קובץ שתעלו זמין בחשבון שלכם. אפשר להעלות כמה קבצים.</p>{% endif %}
-    {% if uploaded %}<p class="notice" role="status">הקובץ נוסף.</p>{% endif %}
-    <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <label>TXT או PDF עם טקסט, עד 2 MB<input id="upload-file" type="file" name="file" accept=".txt,.pdf" required></label>
-      <small id="file-status" role="status"></small>
-      <button id="upload-button">העלאה</button>
-    </form>
-    {% if documents %}<ul>{% for name, shared in documents %}<li><bdi>{{ name }}</bdi> · {{ 'משותף' if shared else 'אישי' }}</li>{% endfor %}</ul>{% endif %}
-  </section>
   {% endif %}
-  {% endif %}
-<footer dir="ltr">revision {{ revision }}</footer>
-</main></body></html>
+  <footer dir="ltr">revision {{ revision }}</footer>
+</main></body>
+{% endif %}
+</html>

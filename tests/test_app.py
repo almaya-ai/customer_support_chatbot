@@ -233,6 +233,9 @@ class VisitorKeyTest(unittest.TestCase):
             response = self.ask(key="good-key")
         self.assertEqual(response.status_code, 502)
 
+    def test_cloud_chat_offers_the_missing_key_prompt(self):
+        self.assertIn('id="key-banner"', self.client.get("/").get_data(as_text=True))
+
     def test_cloud_page_does_not_show_local_passwords(self):
         self.assertNotIn("service-local", self.app.test_client().get("/").get_data(as_text=True))
 
@@ -322,6 +325,10 @@ class AdminInstructionsTest(unittest.TestCase):
         upload = client.post("/upload", data={"csrf": token, "file": (io.BytesIO(b"text"), "a.txt")})
         self.assertEqual(upload.status_code, 403)
         self.assertNotIn('id="ask"', client.get("/").get_data(as_text=True))
+
+    def test_local_chat_needs_no_key_prompt(self):
+        client, _ = self.login("noa")
+        self.assertNotIn('id="key-banner"', client.get("/").get_data(as_text=True))
 
     def test_drop_zone_exists_only_where_uploading_is_possible(self):
         self.assertNotIn('id="drop-zone"', self.app.test_client().get("/").get_data(as_text=True))
