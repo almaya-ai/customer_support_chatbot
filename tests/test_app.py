@@ -282,6 +282,16 @@ class AdminInstructionsTest(unittest.TestCase):
         self.assertIn("# תפקיד", page)
         self.assertIn('name="instructions"', page)
 
+    def test_admin_page_offers_both_views_of_the_instructions(self):
+        page = self.admin().get("/").get_data(as_text=True)
+        for element in ('id="view-rendered"', 'id="view-code"', 'id="instructions-preview"', "markdown.js"):
+            self.assertIn(element, page)
+
+    def test_only_the_admin_page_loads_the_markdown_view(self):
+        client, _ = self.login("noa")
+        self.assertNotIn("markdown.js", client.get("/").get_data(as_text=True))
+        self.assertNotIn("markdown.js", self.app.test_client().get("/").get_data(as_text=True))
+
     def test_default_instructions_can_be_saved_back_unchanged(self):
         client = self.admin()
         page = client.get("/").get_data(as_text=True)

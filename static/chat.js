@@ -156,3 +156,37 @@ if (dropZone) {
     fileInput.click();
   });
 }
+
+const instructions = document.querySelector("#instructions");
+if (instructions) {
+  const VIEW_NAME = "instructions-view";
+  const preview = document.querySelector("#instructions-preview");
+  const renderedButton = document.querySelector("#view-rendered");
+  const codeButton = document.querySelector("#view-code");
+
+  function setView(view) {
+    const rendered = view === "rendered";
+    if (rendered) renderMarkdown(instructions.value, preview);
+    instructions.hidden = rendered;
+    preview.hidden = !rendered;
+    renderedButton.setAttribute("aria-pressed", String(rendered));
+    codeButton.setAttribute("aria-pressed", String(!rendered));
+    try {
+      sessionStorage.setItem(VIEW_NAME, view);
+    } catch {
+      // The choice simply resets on the next page load.
+    }
+  }
+
+  function storedView() {
+    try {
+      return sessionStorage.getItem(VIEW_NAME) || "rendered";
+    } catch {
+      return "rendered";
+    }
+  }
+
+  renderedButton.addEventListener("click", () => setView("rendered"));
+  codeButton.addEventListener("click", () => setView("code"));
+  setView(storedView());
+}

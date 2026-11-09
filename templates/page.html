@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>קו לבית | צ׳אט שירות לקוחות</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='site.css') }}">
+  {% if user == 'admin' %}<script defer src="{{ url_for('static', filename='markdown.js') }}"></script>{% endif %}
   <script defer src="{{ url_for('static', filename='chat.js') }}"></script>
 </head>
 {% if chat %}
@@ -99,12 +100,45 @@
     <small class="revision" dir="ltr">revision {{ revision }}</small>
   </div>
 </body>
+{% elif user == 'admin' %}
+<body class="admin">
+<div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<main class="card admin-card">
+  <header class="topbar">
+    <span class="brand">קו לבית</span>
+    <nav class="tools" aria-label="כלים">
+      <span class="who">אדמין</span>
+      <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost">יציאה</button></form>
+    </nav>
+  </header>
+  <form class="instructions" method="post" action="{{ url_for('save_instructions') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="instructions-head">
+      <h1>הוראות המערכת</h1>
+      <div class="view-toggle" role="group" aria-label="אופן התצוגה">
+        <button type="button" id="view-rendered" aria-pressed="false">תצוגה</button>
+        <button type="button" id="view-code" aria-pressed="true">קוד</button>
+      </div>
+    </div>
+    <textarea name="instructions" id="instructions" maxlength="{{ max_instructions }}" dir="rtl" spellcheck="false" aria-label="הוראות למודל">{{ instructions }}</textarea>
+    <div id="instructions-preview" class="markdown" dir="rtl" tabindex="0" hidden></div>
+    <div class="instructions-foot">
+      <button>שמירה</button>
+      {% if saved %}<span class="saved" role="status">ההוראות נשמרו.</span>{% endif %}
+      <span class="applies">השינוי חל מהשאלה הבאה.</span>
+    </div>
+    <details class="fixed-section">
+      <summary>סעיף קבוע שהשרת תמיד מוסיף בסוף</summary>
+      <pre class="fixed-format" dir="auto">{{ output_format }}</pre>
+    </details>
+  </form>
+  <footer class="revision" dir="ltr">revision {{ revision }}</footer>
+</main></body>
 {% else %}
 <body class="plain">
 <div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
 <main class="card">
   <header><p class="file">קו לבית</p><h1>צ׳אט שירות לקוחות</h1></header>
-  {% if not user %}
   <section><h2>הגדרות</h2>
     <label>מפתח OpenRouter<input id="openrouter-key" type="password" autocomplete="off" spellcheck="false"></label>
     <small>המפתח נשמר בלשונית הזו בלבד ונשלח עם כל שאלה. השרת לא שומר אותו.</small>
@@ -120,22 +154,6 @@
       <button>כניסה</button>
     </form>
   </section>
-  {% else %}
-  <div class="bar"><strong>{{ users[user] }}</strong>
-    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">יציאה</button></form>
-  </div>
-  <section><h2>הוראות המערכת</h2>
-    <p>ההוראות נשלחות למודל בכל שאלה, והשינוי חל מיד אחרי השמירה.</p>
-    {% if saved %}<p class="notice" role="status">ההוראות נשמרו.</p>{% endif %}
-    <form method="post" action="{{ url_for('save_instructions') }}">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <label>הוראות למודל<textarea name="instructions" rows="22" maxlength="{{ max_instructions }}" dir="auto" required>{{ instructions }}</textarea></label>
-      <button>שמירה</button>
-    </form>
-    <small>השרת תמיד מוסיף את הסעיף הזה בסוף, כדי שתשובת המודל תישאר בפורמט שהוא מאמת:</small>
-    <pre class="fixed-format" dir="auto">{{ output_format }}</pre>
-  </section>
-  {% endif %}
   <footer dir="ltr">revision {{ revision }}</footer>
 </main></body>
 {% endif %}
