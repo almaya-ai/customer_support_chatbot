@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import tempfile
@@ -234,6 +235,99 @@ class VisitorKeyTest(unittest.TestCase):
 
     def test_cloud_page_does_not_show_local_passwords(self):
         self.assertNotIn("service-local", self.app.test_client().get("/").get_data(as_text=True))
+
+
+class AdminInstructionsTest(unittest.TestCase):
+    def setUp(self):
+        data = tempfile.TemporaryDirectory()
+        self.addCleanup(data.cleanup)
+        self.data = data.name
+        self.app = create_app({"TESTING": True, "DATA_DIR": data.name, "OPENROUTER_MODEL": "stub-model"})
+
+    def login(self, user, password=None):
+        client = self.app.test_client()
+        fields = {"csrf": self.token(client), "user": user}
+        if password is not None:
+            fields["password"] = password
+        return client, client.post("/login", data=fields).status_code
+
+    def token(self, client):
+        return re.search(r'name="csrf" value="([^"]+)"', client.get("/").get_data(as_text=True))[1]
+
+    def admin(self):
+        client, status = self.login("admin", "service-local")
+        self.assertEqual(status, 303)
+        return client
+
+    def save(self, client, text):
+        return client.post("/admin/instructions", data={"csrf": self.token(client), "instructions": text})
+
+    def test_admin_uses_the_service_password(self):
+        self.assertEqual(self.login("admin")[1], 401)
+        self.assertEqual(self.login("admin", "wrong")[1], 401)
+        self.assertEqual(self.login("admin", "service-local")[1], 303)
+
+    def test_saved_instructions_survive_a_new_app_instance(self):
+        client = self.admin()
+        self.assertEqual(self.save(client, "Prefer the shortest row.").status_code, 303)
+        self.assertIn("Prefer the shortest row.", client.get("/").get_data(as_text=True))
+        self.assertEqual(LocalStore(self.data).instructions("unused"), "Prefer the shortest row.")
+
+    def test_admin_page_shows_current_instructions_before_any_edit(self):
+        page = self.admin().get("/").get_data(as_text=True)
+        self.assertIn("Choose at most two evidence rows", page)
+        self.assertIn('name="instructions"', page)
+
+    def test_first_read_stores_the_default(self):
+        store = LocalStore(self.data)
+        self.assertEqual(store.instructions("first default"), "first default")
+        self.assertEqual(store.instructions("second default"), "first default")
+
+    def test_other_accounts_cannot_read_or_change_instructions(self):
+        admin = self.admin()
+        self.save(admin, "Original rule.")
+        for user, password in (("noa", None), ("dan", None), ("service", "service-local")):
+            with self.subTest(user=user):
+                client, _ = self.login(user, password)
+                self.assertNotIn("Original rule.", client.get("/").get_data(as_text=True))
+                self.assertEqual(self.save(client, "Changed.").status_code, 403)
+        self.assertEqual(self.save(self.app.test_client(), "Changed.").status_code, 401)
+        self.assertIn("Original rule.", admin.get("/").get_data(as_text=True))
+
+    def test_blank_or_oversized_instructions_are_refused(self):
+        client = self.admin()
+        self.save(client, "Keep me.")
+        for text in ("   ", "x" * 4001):
+            self.assertEqual(self.save(client, text).status_code, 400)
+        self.assertIn("Keep me.", client.get("/").get_data(as_text=True))
+
+    def test_model_gets_edited_instructions_and_the_fixed_output_format(self):
+        self.save(self.admin(), "Prefer the shortest row.")
+        client, _ = self.login("noa")
+        with patch("answers.urlopen") as endpoint:
+            endpoint.return_value.__enter__.return_value = io.StringIO(MODEL_REPLY)
+            response = client.post("/ask", data={
+                "csrf": self.token(client), "question": "ההזמנה שלי מוכנה לאיסוף?", "openrouter_key": "key",
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("4826", response.get_json()["answer"])
+        sent = json.loads(endpoint.call_args[0][0].data)["messages"][0]["content"]
+        self.assertTrue(sent.startswith("Prefer the shortest row."))
+        self.assertIn("JSON array", sent)
+
+    def test_admin_has_no_chat_or_uploads(self):
+        client = self.admin()
+        token = self.token(client)
+        self.assertEqual(client.post("/ask", data={"csrf": token, "question": "שלום"}).status_code, 403)
+        upload = client.post("/upload", data={"csrf": token, "file": (io.BytesIO(b"text"), "a.txt")})
+        self.assertEqual(upload.status_code, 403)
+        self.assertNotIn('id="ask"', client.get("/").get_data(as_text=True))
+
+    def test_drop_zone_exists_only_where_uploading_is_possible(self):
+        self.assertNotIn('id="drop-zone"', self.app.test_client().get("/").get_data(as_text=True))
+        self.assertNotIn('id="drop-zone"', self.admin().get("/").get_data(as_text=True))
+        client, _ = self.login("noa")
+        self.assertIn('id="drop-zone"', client.get("/").get_data(as_text=True))
 
 
 if __name__ == "__main__":

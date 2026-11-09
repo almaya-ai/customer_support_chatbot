@@ -25,6 +25,7 @@ class LocalStore:
         with closing(self.connect()) as db, db:
             db.execute("CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, scope TEXT, meta TEXT, data BLOB)")
             db.execute("CREATE TABLE IF NOT EXISTS orders (owner TEXT PRIMARY KEY, data TEXT)")
+            db.execute("CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT)")
             db.executemany("INSERT OR IGNORE INTO orders VALUES (?, ?)", [
                 (owner, json.dumps(order)) for owner, order in ORDERS.items()
             ])
@@ -45,6 +46,15 @@ class LocalStore:
     def add(self, meta, data):
         with closing(self.connect()) as db, db:
             db.execute("INSERT INTO documents VALUES (?, ?, ?, ?)", (meta["id"], meta["scope"], json.dumps(meta), data))
+
+    def instructions(self, default):
+        with closing(self.connect()) as db, db:
+            db.execute("INSERT OR IGNORE INTO settings VALUES ('system_instructions', ?)", (default,))
+            return db.execute("SELECT value FROM settings WHERE name='system_instructions'").fetchone()[0]
+
+    def set_instructions(self, text):
+        with closing(self.connect()) as db, db:
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('system_instructions', ?)", (text,))
 
 
 class CloudStore:
@@ -68,3 +78,19 @@ class CloudStore:
         # An ambiguous Firestore timeout can mean the write succeeded. Keep the
         # private object for reconciliation instead of deleting a valid upload.
         document.create(meta, timeout=12)
+
+    def instructions(self, default):
+        from google.api_core.exceptions import Conflict
+
+        reference = self.db.collection("settings").document("system_instructions")
+        snapshot = reference.get()
+        if snapshot.exists:
+            return snapshot.get("text")
+        try:
+            reference.create({"text": default})
+        except Conflict:
+            return reference.get().get("text")
+        return default
+
+    def set_instructions(self, text):
+        self.db.collection("settings").document("system_instructions").set({"text": text})

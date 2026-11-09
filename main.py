@@ -10,11 +10,13 @@ from uuid import uuid4
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 
-from answers import MISSING, evidence, extract, select_with_openrouter
+from answers import DEFAULT_INSTRUCTIONS, MISSING, OUTPUT_FORMAT, evidence, extract, select_with_openrouter
 from store import CloudStore, LocalStore
 
 
-USERS = {"noa": "נועה | לקוחה", "dan": "דן | לקוח", "service": "מיכל | נציגת שירות"}
+USERS = {"noa": "נועה | לקוחה", "dan": "דן | לקוח", "service": "מיכל | נציגת שירות", "admin": "אדמין"}
+PASSWORD_USERS = {"service", "admin"}
+MAX_INSTRUCTIONS = 4000
 MAX_UPLOAD = 2 * 1024 * 1024
 
 
@@ -74,6 +76,12 @@ def create_app(config=None, store=None):
             abort(401)
         return user
 
+    def chat_user():
+        user = signed_in()
+        if user == "admin":
+            abort(403, "לאדמין אין גישה לצ׳אט או להעלאת קבצים.")
+        return user
+
     @app.get("/healthz")
     def health():
         return jsonify(status="ok")
@@ -82,16 +90,19 @@ def create_app(config=None, store=None):
     def home():
         user = session.get("user")
         docs = [(doc["name"], doc["scope"] == "shared") for scope in (user, "shared")
-                for doc in store.documents(scope)] if user in USERS else []
+                for doc in store.documents(scope)] if user in USERS and user != "admin" else []
+        instructions = store.instructions(DEFAULT_INSTRUCTIONS) if user == "admin" else None
         return render_template("page.html", users=USERS, user=user, csrf=csrf(), documents=docs,
-                               local=not app.config["CLOUD"], uploaded=request.args.get("uploaded") == "1")
+                               local=not app.config["CLOUD"], uploaded=request.args.get("uploaded") == "1",
+                               instructions=instructions, output_format=OUTPUT_FORMAT,
+                               max_instructions=MAX_INSTRUCTIONS, saved=request.args.get("saved") == "1")
 
     @app.post("/login")
     def login():
         user = request.form.get("user")
         supplied = request.form.get("password", "").encode()
         expected = app.config["SERVICE_PASSWORD"].encode()
-        if user not in USERS or (user == "service" and not hmac.compare_digest(supplied, expected)):
+        if user not in USERS or (user in PASSWORD_USERS and not hmac.compare_digest(supplied, expected)):
             return render_template("page.html", users=USERS, csrf=csrf(), local=not app.config["CLOUD"],
                                    error="שם המשתמש או הסיסמה שגויים."), 401
         session.clear()
@@ -104,9 +115,19 @@ def create_app(config=None, store=None):
         session.clear()
         return redirect(url_for("home"), code=303)
 
+    @app.post("/admin/instructions")
+    def save_instructions():
+        if signed_in() != "admin":
+            abort(403, "רק אדמין יכול לערוך את הוראות המערכת.")
+        text = request.form.get("instructions", "").strip()
+        if not 1 <= len(text) <= MAX_INSTRUCTIONS:
+            abort(400, f"כתבו הוראות באורך של עד {MAX_INSTRUCTIONS} תווים.")
+        store.set_instructions(text)
+        return redirect(url_for("home", saved=1), code=303)
+
     @app.post("/upload")
     def upload():
-        user = signed_in()
+        user = chat_user()
         file = request.files.get("file")
         name = file.filename if file else ""
         if not name or len(name) > 160 or "/" in name or "\\" in name or any(ord(char) < 32 for char in name):
@@ -126,7 +147,7 @@ def create_app(config=None, store=None):
 
     @app.post("/ask")
     def ask():
-        user = signed_in()
+        user = chat_user()
         question = request.form.get("question", "").strip()
         if not 1 <= len(question) <= 500:
             return jsonify(error="כתבו שאלה של עד 500 תווים."), 400
@@ -140,7 +161,7 @@ def create_app(config=None, store=None):
             mode = "search"
         if choices and mode == "openrouter":
             try:
-                choices = select_with_openrouter(question, choices, key, model)
+                choices = select_with_openrouter(question, choices, key, model, store.instructions(DEFAULT_INSTRUCTIONS))
             except (URLError, TimeoutError, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
                 if isinstance(exc, HTTPError) and exc.code in (401, 402):
                     app.logger.warning("OpenRouter rejected the visitor key: %s", exc.code)
@@ -157,6 +178,7 @@ def create_app(config=None, store=None):
 
     @app.errorhandler(400)
     @app.errorhandler(401)
+    @app.errorhandler(403)
     @app.errorhandler(413)
     def show_error(error):
         return render_template("error.html", error=error), error.code

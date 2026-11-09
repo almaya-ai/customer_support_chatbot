@@ -42,11 +42,18 @@ class CloudConfigTest(unittest.TestCase):
             client = create_app(store=LocalStore(data)).test_client()
             page = client.get("/", base_url="https://localhost").get_data(as_text=True)
             token = re.search(r'name="csrf" value="([^"]+)"', page)[1]
-            response = client.post(
-                "/login", base_url="https://localhost",
-                data={"csrf": token, "user": "service", "password": "from-settings"},
-            )
-        self.assertEqual(response.status_code, 303)
+            for user in ("service", "admin"):
+                response = client.post(
+                    "/login", base_url="https://localhost",
+                    data={"csrf": token, "user": user, "password": "from-settings"},
+                )
+                self.assertEqual(response.status_code, 303)
+                client.get("/", base_url="https://localhost")
+                page = client.get("/", base_url="https://localhost").get_data(as_text=True)
+                token = re.search(r'name="csrf" value="([^"]+)"', page)[1]
+                client.post("/logout", base_url="https://localhost", data={"csrf": token})
+                page = client.get("/", base_url="https://localhost").get_data(as_text=True)
+                token = re.search(r'name="csrf" value="([^"]+)"', page)[1]
 
 
 class DeployScriptTest(unittest.TestCase):
@@ -61,7 +68,7 @@ class DeployScriptTest(unittest.TestCase):
         fake.write_text(FAKE_GCLOUD)
         fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
         (self.root / "deploy.sh").write_text((ROOT / "deploy.sh").read_text())
-        (self.root / "seed_orders.py").write_text("")
+        (self.root / "seed_orders.py").write_text("import sys\nsys.stdin.read()\n")
         self.log = self.root / "gcloud.log"
         env = {key: value for key, value in os.environ.items()
                if key not in {"PROJECT", "REGION", "OPENROUTER_SECRET", "SETTINGS_SECRET"}}

@@ -24,15 +24,16 @@ section{margin-top:1rem}
 <div class="flow">
   <div class="users" role="group" aria-label="משתמשים בדפדפן">
     <article class="node"><h2>לקוח</h2><p>נכנס בלי סיסמה, שואל על ההזמנה שלו ומעלה קבצים אישיים</p></article>
+    <article class="node"><h2>אדמין</h2><p>נכנס עם אותה סיסמה, רואה ועורך את הוראות המערכת</p></article>
     <article class="node"><h2>נציגת שירות</h2><p>נכנסת עם סיסמה, מעלה מדריכים משותפים וניגשת לצ׳אט</p></article>
   </div>
   <div class="arrow" aria-label="שני התפקידים משתמשים בשירות דרך הדפדפן">↓</div>
   <article class="node primary"><h2>Cloud Run</h2><p>ממשק והתחברות, סינון לפי חשבון, חילוץ טקסט, חיפוש והצגת מקור</p></article>
   <div class="targets" role="group" aria-label="אחסון, מודל ותשתית">
     <article class="node"><h3>Cloud Storage</h3><p>שמירת המקור ב-bucket פרטי</p></article>
-    <article class="node"><h3>Firestore</h3><p>הזמנות, טקסט שחולץ ושיוך לחשבון או למדור המשותף</p></article>
+    <article class="node"><h3>Firestore</h3><p>הזמנות, טקסט שחולץ, שיוך לחשבון או למדור המשותף, והוראות המערכת</p></article>
     <article class="node"><h3>OpenRouter</h3><p>בחירת ראיות מתוך הקטעים שהשרת אישר, עם המפתח של המבקר</p></article>
-    <article class="node"><h3>Secret Manager</h3><p>מפתח session וסיסמת הנציגה בעת ההפעלה</p></article>
+    <article class="node"><h3>Secret Manager</h3><p>מפתח session והסיסמה של הנציגה והאדמין בעת ההפעלה</p></article>
   </div>
 </div>
 <section><h2>שתי החלטות במימוש</h2><p>כששואלים אם ההזמנה מוכנה, המערכת קוראת את הרשומה המעודכנת של הלקוח ב-Firestore.</p><p>לפני קריאה למודל, השרת מחפש רק בתיקיית המידע הלוגית של החשבון המחובר ובמדריך המשותף.</p></section>
