@@ -12,7 +12,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 python3 .claude/skills/live-check/check.py
 ```
 
-תפעול ופתרון תקלות ב-[docs/runbook.md](docs/runbook.md). תרשים המימוש ב-[artifacts/architecture.html](artifacts/architecture.html).
+תפעול ופתרון תקלות ב-[docs/runbook.md](docs/runbook.md). תרשים המימוש ב-[docs/architecture.html](docs/architecture.html).
 
 ## סודות ותצורה
 

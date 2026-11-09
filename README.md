@@ -38,7 +38,7 @@ flowchart LR
     run -.->|סודות בעת ההפעלה| secret
 ```
 
-[תרשים הארכיטקטורה](artifacts/architecture.html) נפתח כקובץ מקומי. פירוט החיבורים וההרשאות נמצא ב-[docs/architecture.md](docs/architecture.md).
+[תרשים הארכיטקטורה](docs/architecture.html) נפתח כקובץ מקומי. פירוט החיבורים וההרשאות נמצא ב-[docs/architecture.md](docs/architecture.md).
 
 ## הרצה
 

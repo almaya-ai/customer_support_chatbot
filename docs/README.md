@@ -2,6 +2,7 @@
 
 | מסמך | מה יש בו |
 |---|---|
+| [architecture.html](architecture.html) | תרשים הארכיטקטורה |
 | [architecture.md](architecture.md) | רכיבים, זרימת מידע והרשאות |
 | [decisions.md](decisions.md) | ההחלטות המרכזיות והנימוקים |
 | [runbook.md](runbook.md) | פריסה, סודות ופתרון תקלות |

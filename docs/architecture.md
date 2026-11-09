@@ -1,6 +1,6 @@
 # ארכיטקטורה
 
-[תרשים המימוש](../artifacts/architecture.html)
+[תרשים הארכיטקטורה](architecture.html)
 
 | חיבור | מה עובר בו |
 |---|---|

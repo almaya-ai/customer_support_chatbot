@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ארכיטקטורה | צ׳אט שירות לקוחות</title>
+<style>
+:root { color-scheme: light; --blue: #2f5f9e; --title: #2b5797; --ink: #1e2f45; --muted: #5d6b7a; --line: #c9d6e3; --frame: #7d8791; --wash: #f3f6fb; --arrow: #3a66a5; --secret: #2f6f5e; --white: #fff; }
+* { box-sizing: border-box; }
+html { background: var(--white); }
+body { margin: 0; padding: clamp(16px, 3vw, 40px); color: var(--ink); font: 16px/1.45 system-ui, "Segoe UI", Arial, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; }
+h1 { margin: 0 0 clamp(20px, 3vw, 36px); color: var(--title); font-size: clamp(28px, 4.2vw, 46px); line-height: 1.15; font-weight: 800; }
+
+/* The flow reads from the browser on the left to the model on the right, in every language. */
+.flow { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(84px, .72fr) minmax(0, 4fr) minmax(84px, .72fr) minmax(130px, 1.15fr); align-items: center; }
+.node { display: grid; justify-items: center; align-content: center; gap: 4px; padding: 16px 10px; background: var(--white); border: 1.5px solid var(--line); text-align: center; }
+.node svg { width: 42px; height: 42px; margin-bottom: 4px; }
+.node h2,.node h3 { margin: 0; color: var(--blue); font-weight: 700; line-height: 1.2; }
+.node h2 { font-size: clamp(18px, 2vw, 23px); }
+.node h3 { font-size: clamp(17px, 1.8vw, 21px); }
+.node p { margin: 0; color: var(--muted); font-size: clamp(13px, 1.35vw, 16px); }
+
+.link { display: grid; justify-items: stretch; gap: 3px; padding-inline: 2px; color: var(--muted); font-size: clamp(11px, 1.15vw, 14px); text-align: center; }
+.link i { position: relative; display: block; height: 2px; background: var(--arrow); }
+.link i::after { content: ""; position: absolute; top: -5px; right: 0; border-block: 6px solid transparent; border-left: 11px solid var(--arrow); }
+.link.both i::before { content: ""; position: absolute; top: -5px; left: 0; border-block: 6px solid transparent; border-right: 11px solid var(--arrow); }
+
+.project { padding: 18px clamp(14px, 2.4vw, 32px) clamp(14px, 2vw, 24px); background: var(--wash); border: 2px solid var(--frame); }
+.project-title { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; color: var(--ink); font-size: clamp(16px, 1.8vw, 21px); font-weight: 700; }
+.project-title svg { width: 36px; height: 36px; flex: none; }
+.run { width: min(380px, 100%); margin: 0 auto; }
+
+/* One stem leaves the server and splits to the three stores below it. */
+.branches { position: relative; height: 62px; }
+.branches span { position: absolute; }
+.stem { top: 0; left: 50%; width: 2px; height: 30px; margin-left: -1px; background: var(--arrow); }
+.bar-data { top: 29px; left: 16.66%; width: 33.34%; height: 2px; background: var(--arrow); }
+.bar-secret { top: 29px; left: 50%; width: 33.34%; border-top: 2px dashed var(--secret); }
+.drop { top: 30px; width: 2px; height: 22px; margin-left: -1px; background: var(--arrow); }
+.drop::after { content: ""; position: absolute; left: -5px; bottom: -10px; border-inline: 6px solid transparent; border-top: 11px solid var(--arrow); }
+.drop.a { left: 16.66%; }
+.drop.b { left: 50%; }
+.drop.c { left: 83.33%; width: 0; margin: 0; background: none; border-left: 2px dashed var(--secret); }
+.drop.c::after { left: -7px; border-top-color: var(--secret); }
+.startup { top: 6px; left: 62%; color: var(--secret); font-size: clamp(11px, 1.1vw, 13px); }
+
+.stores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(8px, 1vw, 14px); }
+
+.node p.held { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--ink); font-weight: 600; }
+.node p.instructions-store { color: var(--blue); font-weight: 700; }
+
+.instructions-flow { margin-top: clamp(18px, 2.6vw, 30px); padding: 14px clamp(14px, 2vw, 22px) 16px; background: var(--wash); border: 1.5px solid var(--line); }
+.instructions-flow h2 { margin: 0 0 10px; color: var(--blue); font-size: clamp(17px, 1.8vw, 21px); }
+.instructions-flow ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(8px, 1.4vw, 18px); margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.instructions-flow li { position: relative; display: grid; gap: 2px; padding-inline-start: 34px; counter-increment: step; font-size: clamp(13px, 1.3vw, 15px); }
+.instructions-flow li::before { content: counter(step); position: absolute; inset-inline-start: 0; top: 0; display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: var(--blue); color: var(--white); font-size: 13px; font-weight: 700; }
+.instructions-flow strong { color: var(--ink); }
+.instructions-flow span { color: var(--muted); }
+
+.notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(10px, 2vw, 24px); margin-top: clamp(20px, 3vw, 34px); color: var(--blue); font-size: clamp(14px, 1.45vw, 17px); font-weight: 650; text-align: center; }
+.notes p { margin: 0; }
+
+@media (max-width: 760px) {
+  .flow { grid-template-columns: minmax(0, 1fr); }
+  .link { width: 2px; height: 62px; margin: 0 auto 8px; padding: 0; display: block; position: relative; background: var(--arrow); font-size: 12px; }
+  .link span { position: absolute; left: 12px; width: 170px; text-align: left; }
+  .link span:first-child { top: 8px; }
+  .link span:last-child { top: 28px; }
+  .link i { position: absolute; left: 0; bottom: 0; width: 2px; height: 0; background: none; }
+  .link i::after { top: auto; bottom: -9px; right: auto; left: -5px; border-inline: 6px solid transparent; border-block: 0; border-top: 11px solid var(--arrow); }
+  .link.both i::before { top: -61px; left: -5px; border-inline: 6px solid transparent; border-block: 0; border-bottom: 11px solid var(--arrow); }
+  .branches { display: none; }
+  .run { margin-bottom: 12px; }
+  .stores,.notes,.instructions-flow ol { grid-template-columns: minmax(0, 1fr); }
+}
+@media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>צ׳אט שירות לקוחות: ארכיטקטורה</h1>
+
+  <div class="flow" dir="ltr">
+    <section class="node" dir="rtl">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="5" y="8" width="38" height="32" rx="4" fill="#20262c"/><rect x="9" y="17" width="30" height="19" fill="#fff"/><rect x="11" y="19" width="12" height="15" fill="#20262c"/><rect x="25" y="19" width="12" height="6" fill="#20262c"/><rect x="25" y="28" width="12" height="6" fill="#20262c"/></svg>
+      <h2>דפדפן</h2>
+      <p>לקוח, נציגה או אדמין</p><p class="held">בלשונית: השיחה והמפתח</p>
+    </section>
+
+    <div class="link" dir="rtl"><span>HTTPS</span><i></i><span>שאלה, היסטוריה ומפתח, או עריכת הוראות</span></div>
+
+    <section class="project" dir="ltr" aria-label="Google Cloud Project">
+      <p class="project-title">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 36a9 9 0 0 1-1.6-17.9A12 12 0 0 1 35.5 20 8.2 8.2 0 0 1 35 36Z" fill="none" stroke="#4285f4" stroke-width="4"/><path d="M12.4 18.1A12 12 0 0 1 24 10" fill="none" stroke="#ea4335" stroke-width="4"/><path d="M24 10a12 12 0 0 1 11.5 10" fill="none" stroke="#fbbc04" stroke-width="4"/><path d="M14 36h10" fill="none" stroke="#34a853" stroke-width="4"/></svg>
+        Google Cloud Project
+      </p>
+      <section class="node run" dir="rtl">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 8 26 24 8 40l4-16Z" fill="#a9c4f5"/><path d="M20 8l20 16-20 16 5-16Z" fill="#5b8def"/></svg>
+        <h2>Cloud Run</h2>
+        <p>שרת הצ׳אט, לולאת הסוכן ומסך האדמין</p>
+      </section>
+
+      <div class="branches" aria-hidden="true">
+        <span class="stem"></span><span class="bar-data"></span><span class="bar-secret"></span>
+        <span class="drop a"></span><span class="drop b"></span><span class="drop c"></span>
+        <span class="startup" dir="rtl">בעת ההפעלה</span>
+      </div>
+
+      <div class="stores">
+        <section class="node" dir="rtl">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="34" height="13" fill="#a9c4f5"/><rect x="7" y="26" width="34" height="13" fill="#5b8def"/><circle cx="34" cy="15.5" r="2" fill="#fff"/><circle cx="34" cy="32.5" r="2" fill="#fff"/></svg>
+          <h3>Cloud Storage</h3>
+          <p>הקבצים המקוריים</p>
+        </section>
+        <section class="node" dir="rtl">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 13 24 5l16 8-16 8Z" fill="#a9c4f5"/><path d="M8 24l16-8 16 8-16 8Z" fill="#5b8def"/><path d="M8 35l16-8 16 8-16 8Z" fill="#a9c4f5"/></svg>
+          <h3>Firestore</h3>
+          <p>הזמנות וטקסט מהקבצים</p><p class="instructions-store">הוראות המערכת</p>
+        </section>
+        <section class="node" dir="rtl">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 12H7v24h6M35 12h6v24h-6" fill="none" stroke="#5b8def" stroke-width="3"/><text x="24" y="30" font-size="17" font-weight="700" text-anchor="middle" fill="#3a66a5">***</text></svg>
+          <h3>Secret Manager</h3>
+          <p>מפתח session וסיסמה</p>
+        </section>
+      </div>
+    </section>
+
+    <div class="link both" dir="rtl"><span>לולאת סוכן</span><i></i><span>הוראות, שיחה ותוצאות כלים</span></div>
+
+    <section class="node" dir="rtl">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M5 24a11 11 0 0 1 11-11h27l-7 11 7 11H16A11 11 0 0 1 5 24Z" fill="#6d3df0"/><circle cx="17" cy="24" r="6" fill="#fff"/></svg>
+      <h2>OpenRouter</h2>
+      <p>מודל חיצוני, במפתח של המבקר</p>
+    </section>
+  </div>
+
+  <section class="instructions-flow" aria-label="מסלול הוראות המערכת">
+    <h2>הוראות המערכת</h2>
+    <ol>
+      <li><strong>עריכה</strong><span>אדמין עורך במסך האדמין, בסיסמה</span></li>
+      <li><strong>שמירה</strong><span>נשמרות ב-Firestore, והשינוי חל בלי פריסה</span></li>
+      <li><strong>חיבור</strong><span>השרת מוסיף הגדרות טכניות קבועות מהקוד</span></li>
+      <li><strong>שליחה</strong><span>הן נשלחות למודל בכל שאלה</span></li>
+    </ol>
+  </section>
+
+  <div class="notes">
+    <p>הסוכן רואה רק את ההזמנה והמסמכים של החשבון המחובר</p>
+    <p>התשובה מצטטת שורות שנקראו בפועל</p>
+    <p>השיחה נשמרת רק בלשונית, ונשלחת למודל עם כל שאלה</p>
+  </div>
+</main>
+</body>
+</html>
