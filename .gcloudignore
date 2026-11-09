@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+.local
+.env
+.env.*
+.claude
+__pycache__
+.pytest_cache
+artifacts
+docs
+fixtures
+tests
+*.md

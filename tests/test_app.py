@@ -1,0 +1,212 @@
+import io
+import os
+import re
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
+
+from main import create_app
+from answers import select_with_openrouter
+from store import LocalStore
+
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+
+
+class AppTest(unittest.TestCase):
+    def setUp(self):
+        data = tempfile.TemporaryDirectory()
+        self.addCleanup(data.cleanup)
+        self.app = create_app({"TESTING": True, "DATA_DIR": data.name})
+        self.clients = {}
+
+    def token(self, client):
+        page = client.get("/").get_data(as_text=True)
+        return re.search(r'name="csrf" value="([^"]+)"', page)[1]
+
+    def user(self, name):
+        client = self.app.test_client()
+        fields = {"csrf": self.token(client), "user": name}
+        if name == "service":
+            fields["password"] = "service-local"
+        response = client.post("/login", data=fields)
+        self.assertEqual(response.status_code, 303)
+        self.clients[name] = client
+        return client
+
+    def upload(self, user, filename, raw=None):
+        client = self.clients[user]
+        return client.post("/upload", data={
+            "csrf": self.token(client),
+            "file": (io.BytesIO(raw if raw is not None else (FIXTURES / filename).read_bytes()), filename),
+            "scope": "shared",
+        })
+
+    def ask(self, user, question, key=None):
+        client = self.clients[user]
+        fields = {"csrf": self.token(client), "question": question}
+        if key is not None:
+            fields["openrouter_key"] = key
+        return client.post("/ask", data=fields).get_json()
+
+    def test_order_and_document_flow(self):
+        noa = self.user("noa")
+        self.user("dan")
+        self.user("service")
+        self.assertIn("4826", self.ask("noa", "ההזמנה שלי מוכנה לאיסוף?")["answer"])
+        self.assertIn("14:00", self.ask("dan", "ההזמנה שלי מוכנה לאיסוף?")["answer"])
+        self.assertEqual(self.upload("noa", "order-noa.txt").status_code, 303)
+        self.assertEqual(self.upload("dan", "order-dan.pdf").status_code, 303)
+        self.assertEqual(self.upload("service", "service-guide.txt").status_code, 303)
+        for account, filename, amount in (("noa", "order-noa.txt", "129"), ("dan", "order-dan.pdf", "179")):
+            receipt = self.ask(account, "כמה שילמתי?")
+            self.assertEqual(receipt["sources"], [filename])
+            self.assertIn(amount, receipt["answer"])
+            guide = self.ask(account, "תוך כמה ימים אפשר להחזיר מוצר?")
+            self.assertIn("21", guide["answer"])
+            self.assertEqual(guide["sources"], ["service-guide.txt"])
+        self.assertNotIn("order-dan.pdf", noa.get("/").get_data(as_text=True))
+        self.assertEqual(self.ask("noa", "כמה דן שילם בהזמנה KB-2071 והאם היא מוכנה?")["sources"], [])
+        self.assertEqual(self.ask("noa", "מה משך האחריות?")["sources"], [])
+
+    def test_invalid_file_and_csrf(self):
+        noa = self.user("noa")
+        self.assertEqual(self.upload("noa", "broken.pdf", b"fake").status_code, 400)
+        self.assertEqual(noa.post("/ask", data={"question": "hi"}).status_code, 400)
+        self.assertEqual(self.app.test_client().get("/healthz").get_json(), {"status": "ok"})
+
+    def test_openrouter_cannot_return_unapproved_text_or_cross_scope(self):
+        self.user("noa")
+        self.user("dan")
+        self.upload("noa", "order-noa.txt")
+        self.upload("dan", "order-dan.pdf")
+        self.app.config.update(OPENROUTER_MODEL="stub")
+        with patch("main.select_with_openrouter", side_effect=lambda question, choices, *_: choices[:1]) as model:
+            result = self.ask("noa", "כמה שילמתי?", key="stub")
+            self.assertEqual(result["mode"], "openrouter")
+            self.assertEqual(result["sources"], ["order-noa.txt"])
+            self.assertNotIn("179", str(model.call_args))
+            self.assertNotIn("order-dan.pdf", str(model.call_args))
+
+        with patch("answers.urlopen") as endpoint:
+            endpoint.return_value.__enter__.return_value = io.StringIO(
+                '{"choices":[{"message":{"content":"[99]"}}]}'
+            )
+            with self.assertRaises(ValueError):
+                select_with_openrouter("question", [{"source": "allowed", "text": "evidence"}], "stub", "stub")
+
+
+MODEL_REPLY = '{"choices":[{"message":{"content":"[0]"}}]}'
+
+
+class AccessTest(unittest.TestCase):
+    def setUp(self):
+        data = tempfile.TemporaryDirectory()
+        self.addCleanup(data.cleanup)
+        self.app = create_app({"TESTING": True, "DATA_DIR": data.name})
+
+    def login(self, user, password=None):
+        client = self.app.test_client()
+        token = re.search(r'name="csrf" value="([^"]+)"', client.get("/").get_data(as_text=True))[1]
+        fields = {"csrf": token, "user": user}
+        if password is not None:
+            fields["password"] = password
+        return client, client.post("/login", data=fields).status_code
+
+    def test_customers_enter_without_a_password(self):
+        for user in ("noa", "dan"):
+            self.assertEqual(self.login(user)[1], 303)
+
+    def test_service_account_requires_its_password(self):
+        self.assertEqual(self.login("service")[1], 401)
+        self.assertEqual(self.login("service", "wrong")[1], 401)
+        self.assertEqual(self.login("service", "service-local")[1], 303)
+
+    def test_rejected_service_login_does_not_sign_in(self):
+        client, _ = self.login("service", "wrong")
+        with client.session_transaction() as session:
+            self.assertNotIn("user", session)
+
+    def test_settings_field_is_on_every_page_and_never_posted_by_other_forms(self):
+        client = self.app.test_client()
+        pages = [client.get("/").get_data(as_text=True)]
+        signed_in, _ = self.login("noa")
+        pages.append(signed_in.get("/").get_data(as_text=True))
+        for page in pages:
+            field = re.search(r'<input[^>]*id="openrouter-key"[^>]*>', page)
+            self.assertIsNotNone(field)
+            self.assertNotIn("name=", field[0])
+            self.assertIn('type="password"', field[0])
+
+
+class VisitorKeyTest(unittest.TestCase):
+    def setUp(self):
+        data = tempfile.TemporaryDirectory()
+        self.addCleanup(data.cleanup)
+        self.app = create_app(
+            {"TESTING": True, "CLOUD": True, "SECRET_KEY": "k" * 32,
+             "SERVICE_PASSWORD": "service-test", "OPENROUTER_MODEL": "stub-model"},
+            store=LocalStore(data.name),
+        )
+        self.client = self.app.test_client()
+        token = re.search(r'name="csrf" value="([^"]+)"', self.client.get("/").get_data(as_text=True))[1]
+        self.client.post("/login", data={"csrf": token, "user": "noa"})
+
+    def ask(self, question="ההזמנה שלי מוכנה לאיסוף?", key=None):
+        token = re.search(r'name="csrf" value="([^"]+)"', self.client.get("/").get_data(as_text=True))[1]
+        fields = {"csrf": token, "question": question}
+        if key is not None:
+            fields["openrouter_key"] = key
+        return self.client.post("/ask", data=fields)
+
+    def test_model_is_called_with_the_visitor_key(self):
+        with patch("answers.urlopen") as endpoint:
+            endpoint.return_value.__enter__.return_value = io.StringIO(MODEL_REPLY)
+            response = self.ask(key="  visitor-key\n")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["mode"], "openrouter")
+        self.assertIn("4826", response.get_json()["answer"])
+        self.assertEqual(endpoint.call_args[0][0].get_header("Authorization"), "Bearer visitor-key")
+
+    def test_visitor_key_is_not_kept_after_the_request(self):
+        with patch("answers.urlopen") as endpoint:
+            endpoint.return_value.__enter__.return_value = io.StringIO(MODEL_REPLY)
+            response = self.ask(key="visitor-key")
+        self.assertNotIn("visitor-key", response.get_data(as_text=True))
+        with self.client.session_transaction() as session:
+            self.assertNotIn("visitor-key", str(dict(session)))
+        self.assertNotIn("visitor-key", self.client.get("/").get_data(as_text=True))
+
+    def test_cloud_question_without_key_is_refused_before_any_model_call(self):
+        with patch("answers.urlopen") as endpoint, patch.dict(os.environ, {"OPENROUTER_API_KEY": "server-key"}):
+            response = self.ask()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("מפתח", response.get_json()["error"])
+        endpoint.assert_not_called()
+
+    def test_blank_key_counts_as_missing(self):
+        with patch("answers.urlopen") as endpoint:
+            response = self.ask(key="   ")
+        self.assertEqual(response.status_code, 400)
+        endpoint.assert_not_called()
+
+    def test_rejected_key_gets_its_own_error(self):
+        for code in (401, 402):
+            with patch("answers.urlopen", side_effect=HTTPError("u", code, "rejected", {}, None)):
+                response = self.ask(key="bad-key")
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("מפתח", response.get_json()["error"])
+
+    def test_model_outage_is_reported_as_unavailable(self):
+        with patch("answers.urlopen", side_effect=HTTPError("u", 503, "down", {}, None)):
+            response = self.ask(key="good-key")
+        self.assertEqual(response.status_code, 502)
+
+    def test_cloud_page_does_not_show_local_passwords(self):
+        self.assertNotIn("service-local", self.app.test_client().get("/").get_data(as_text=True))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ארכיטקטורה | קו לבית</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#1d1d1b;background:#f6f5f1}
+main{width:min(52rem,calc(100% - 2rem));margin:2rem auto}
+header,.node,section{background:#fff;border:1px solid #e2e0d8;border-radius:.75rem;padding:1rem}
+h1,h2,h3,p{margin:.3rem 0 .55rem}
+.flow{text-align:center;display:grid;gap:.55rem;margin:1rem 0}
+.primary{background:#1f5f4a;color:#fff}
+.arrow{color:#1f5f4a;font-weight:bold}
+.users{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:.65rem}
+.targets{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.65rem}
+.targets article{position:relative}
+.targets article::before{content:"↕";display:block;color:#1f5f4a}
+section{margin-top:1rem}
+</style>
+</head>
+<body><main>
+<header><h1>קו לבית | תרשים המימוש</h1><p>אחסון מסמכים, הזמנות וחיפוש במקורות</p></header>
+<div class="flow">
+  <div class="users" role="group" aria-label="משתמשים בדפדפן">
+    <article class="node"><h2>לקוח</h2><p>נכנס בלי סיסמה, שואל על ההזמנה שלו ומעלה קבצים אישיים</p></article>
+    <article class="node"><h2>נציגת שירות</h2><p>נכנסת עם סיסמה, מעלה מדריכים משותפים וניגשת לצ׳אט</p></article>
+  </div>
+  <div class="arrow" aria-label="שני התפקידים משתמשים בשירות דרך הדפדפן">↓</div>
+  <article class="node primary"><h2>Cloud Run</h2><p>ממשק והתחברות, סינון לפי חשבון, חילוץ טקסט, חיפוש והצגת מקור</p></article>
+  <div class="targets" role="group" aria-label="אחסון, מודל ותשתית">
+    <article class="node"><h3>Cloud Storage</h3><p>שמירת המקור ב-bucket פרטי</p></article>
+    <article class="node"><h3>Firestore</h3><p>הזמנות, טקסט שחולץ ושיוך לחשבון או למדור המשותף</p></article>
+    <article class="node"><h3>OpenRouter</h3><p>בחירת ראיות מתוך הקטעים שהשרת אישר, עם המפתח של המבקר</p></article>
+    <article class="node"><h3>Secret Manager</h3><p>מפתח session וסיסמת הנציגה בעת ההפעלה</p></article>
+  </div>
+</div>
+<section><h2>שתי החלטות במימוש</h2><p>כששואלים אם ההזמנה מוכנה, המערכת קוראת את הרשומה המעודכנת של הלקוח ב-Firestore.</p><p>לפני קריאה למודל, השרת מחפש רק בתיקיית המידע הלוגית של החשבון המחובר ובמדריך המשותף.</p></section>
+</main></body>
+</html>
