@@ -75,10 +75,9 @@ class ParseMarkdownTest(unittest.TestCase):
     def test_default_instructions_render_their_structure(self):
         blocks = parse(DEFAULT_INSTRUCTIONS)
         levels = [b["level"] for b in blocks if b["type"] == "heading"]
-        self.assertEqual(levels.count(1), 6)
-        self.assertEqual(levels.count(2), 6)
-        evidence = next(b for b in blocks if b["type"] == "list")["items"][1]
-        self.assertEqual(len(evidence["children"][0]["items"]), 3)
+        self.assertEqual(levels.count(1), 5)
+        self.assertEqual(levels.count(2), 2)
+        self.assertEqual([len(b["items"]) for b in blocks if b["type"] == "list"], [3, 2, 3])
 
 
 if __name__ == "__main__":

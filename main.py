@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 
-from answers import DEFAULT_INSTRUCTIONS, MISSING, OUTPUT_FORMAT, evidence, extract, select_with_openrouter
+from answers import DEFAULT_INSTRUCTIONS, FIXED_INSTRUCTIONS, MISSING, evidence, extract, select_with_openrouter
 from store import CloudStore, LocalStore
 
 
@@ -94,7 +94,7 @@ def create_app(config=None, store=None):
         instructions = store.instructions(DEFAULT_INSTRUCTIONS) if user == "admin" else None
         return render_template("page.html", users=USERS, user=user, csrf=csrf(), documents=docs,
                                local=not app.config["CLOUD"], uploaded=request.args.get("uploaded") == "1",
-                               instructions=instructions, output_format=OUTPUT_FORMAT,
+                               instructions=instructions, fixed_instructions=FIXED_INSTRUCTIONS,
                                max_instructions=MAX_INSTRUCTIONS, saved=request.args.get("saved") == "1")
 
     @app.post("/login")
